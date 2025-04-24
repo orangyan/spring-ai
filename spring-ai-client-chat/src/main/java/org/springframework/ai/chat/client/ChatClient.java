@@ -133,15 +133,44 @@ public interface ChatClient {
 
 	}
 
+	/**
+	 * AdvisorSpec接口定义了配置顾问(Advisor)的规范
+	 * 它提供了一系列方法来设置顾问参数，以便在构建顾问实例时使用这些参数
+	 */
 	interface AdvisorSpec {
 
-		AdvisorSpec param(String k, Object v);
+	    /**
+	     * 设置单个参数
+	     *
+	     * @param k 参数名
+	     * @param v 参数值
+	     * @return 当前AdvisorSpec实例，支持链式调用
+	     */
+	    AdvisorSpec param(String k, Object v);
 
-		AdvisorSpec params(Map<String, Object> p);
+	    /**
+	     * 批量设置参数
+	     *
+	     * @param p 包含多个参数的Map，其中键是参数名，值是参数值
+	     * @return 当前AdvisorSpec实例，支持链式调用
+	     */
+	    AdvisorSpec params(Map<String, Object> p);
 
-		AdvisorSpec advisors(Advisor... advisors);
+	    /**
+	     * 设置多个顾问
+	     *
+	     * @param advisors 一个或多个Advisor实例
+	     * @return 当前AdvisorSpec实例，支持链式调用
+	     */
+	    AdvisorSpec advisors(Advisor... advisors);
 
-		AdvisorSpec advisors(List<Advisor> advisors);
+	    /**
+	     * 设置多个顾问
+	     *
+	     * @param advisors 包含多个Advisor实例的List
+	     * @return 当前AdvisorSpec实例，支持链式调用
+	     */
+	    AdvisorSpec advisors(List<Advisor> advisors);
 
 	}
 

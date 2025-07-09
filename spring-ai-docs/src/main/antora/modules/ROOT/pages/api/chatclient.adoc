@@ -296,7 +296,7 @@ Flux<String> output = chatClient.prompt()
 You can also stream the `ChatResponse` using the method `Flux<ChatResponse> chatResponse()`.
 
 In the future, we will offer a convenience method that will let you return a Java entity with the reactive `stream()` method.
-In the meantime, you should use the xref:api/structured-output-converter.adoc#StructuredOutputConverter[Structured Output Converter] to convert the aggregated response explicity as shown below.
+In the meantime, you should use the xref:api/structured-output-converter.adoc#StructuredOutputConverter[Structured Output Converter] to convert the aggregated response explicitly as shown below.
 This also demonstrates the use of parameters in the fluent API that will be discussed in more detail in a later section of the documentation.
 
 [source,java]
@@ -335,8 +335,6 @@ Internally, the ChatClient uses the `PromptTemplate` class to handle the user an
 By default, Spring AI uses the `StTemplateRenderer` implementation, which is based on the open-source https://www.stringtemplate.org/[StringTemplate] engine developed by Terence Parr.
 
 Spring AI also provides a `NoOpTemplateRenderer` for cases where no template processing is desired.
-
-Spring AI also provides a `NoOpTemplateRenderer`.
 
 NOTE: The `TemplateRenderer` configured directly on the `ChatClient` (via `.templateRenderer()`) applies only to the prompt content defined directly in the `ChatClient` builder chain (e.g., via `.user()`, `.system()`).
 It does *not* affect templates used internally by xref:api/retrieval-augmented-generation.adoc#_questionansweradvisor[Advisors] like `QuestionAnswerAdvisor`, which have their own template customization mechanisms (see xref:api/retrieval-augmented-generation.adoc#_custom_template[Custom Advisor Templates]).
@@ -595,8 +593,9 @@ You can customize what data from `AdvisedRequest` and `ChatResponse` is logged b
 [source,java]
 ----
 SimpleLoggerAdvisor(
-    Function<AdvisedRequest, String> requestToString,
-    Function<ChatResponse, String> responseToString
+    Function<ChatClientRequest, String> requestToString,
+    Function<ChatResponse, String> responseToString,
+    int order
 )
 ----
 
@@ -605,8 +604,9 @@ Example usage:
 [source,java]
 ----
 SimpleLoggerAdvisor customLogger = new SimpleLoggerAdvisor(
-    request -> "Custom request: " + request.userText,
-    response -> "Custom response: " + response.getResult()
+    request -> "Custom request: " + request.prompt().getUserMessage(),
+    response -> "Custom response: " + response.getResult(),
+    0
 );
 ----
 

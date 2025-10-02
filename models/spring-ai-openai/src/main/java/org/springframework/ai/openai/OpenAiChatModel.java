@@ -366,12 +366,13 @@ public class OpenAiChatModel implements ChatModel {
 				if (this.toolExecutionEligibilityPredicate.isToolExecutionRequired(prompt.getOptions(), response)) {
 					// FIXME: bounded elastic needs to be used since tool calling
 					//  is currently only synchronous
-					return Flux.deferContextual((ctx) -> {
+					return Flux.deferContextual(ctx -> {
 						ToolExecutionResult toolExecutionResult;
 						try {
 							ToolCallReactiveContextHolder.setContext(ctx);
 							toolExecutionResult = this.toolCallingManager.executeToolCalls(prompt, response);
-						} finally {
+						}
+						finally {
 							ToolCallReactiveContextHolder.clearContext();
 						}
 						if (toolExecutionResult.returnDirect()) {
@@ -447,7 +448,12 @@ public class OpenAiChatModel implements ChatModel {
 			generationMetadataBuilder.metadata("logprobs", choice.logprobs());
 		}
 
-		var assistantMessage = new AssistantMessage(textContent, metadata, toolCalls, media);
+		var assistantMessage = AssistantMessage.builder()
+			.content(textContent)
+			.properties(metadata)
+			.toolCalls(toolCalls)
+			.media(media)
+			.build();
 		return new Generation(assistantMessage, generationMetadataBuilder.build());
 	}
 

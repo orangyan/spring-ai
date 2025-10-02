@@ -1,4 +1,5 @@
 name: Maintenance Push – Fast
+run-name: ${{ github.event.inputs.commit_sha && format('Manual Test - {0}', github.event.inputs.commit_sha) || format('Fast Build - {0}', github.sha) }}
 
 on:
   push:
@@ -91,4 +92,4 @@ jobs:
             echo "Check the 'Compute impacted modules' step output for debugging info"
             exit 1
           fi
-          ./mvnw -B -T 1C -Pintegration-tests -DfailIfNoTests=false -pl "$MODS" -amd verify
+          ./mvnw -B -q -T 1C -Pintegration-tests -DfailIfNoTests=false -pl "$MODS" -amd verify

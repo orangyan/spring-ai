@@ -250,6 +250,18 @@
 				<optional>true</optional>
 			</dependency>
 
+			<dependency>
+				<groupId>org.springframework.ai</groupId>
+				<artifactId>spring-ai-google-genai</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+
+			<dependency>
+				<groupId>org.springframework.ai</groupId>
+				<artifactId>spring-ai-google-genai-embedding</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+
             <dependency>
                 <groupId>org.springframework.ai</groupId>
                 <artifactId>spring-ai-huggingface</artifactId>
@@ -547,11 +559,23 @@
                 <version>${project.version}</version>
             </dependency>
 
-			<!-- Spring AI MCP server autoconfiguration -->
+			<!-- Spring AI MCP server autoconfigurations -->
 
             <dependency>
                 <groupId>org.springframework.ai</groupId>
-                <artifactId>spring-ai-autoconfigure-mcp-server</artifactId>
+                <artifactId>spring-ai-autoconfigure-mcp-server-common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-autoconfigure-mcp-server-webmvc</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-autoconfigure-mcp-server-webflux</artifactId>
                 <version>${project.version}</version>
             </dependency>
 
@@ -586,6 +610,12 @@
 			<dependency>
 				<groupId>org.springframework.ai</groupId>
 				<artifactId>spring-ai-autoconfigure-model-elevenlabs</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+
+			<dependency>
+				<groupId>org.springframework.ai</groupId>
+				<artifactId>spring-ai-autoconfigure-model-google-genai</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 
@@ -1008,6 +1038,18 @@
 
 			<dependency>
 				<groupId>org.springframework.ai</groupId>
+				<artifactId>spring-ai-starter-model-google-genai</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+
+			<dependency>
+				<groupId>org.springframework.ai</groupId>
+				<artifactId>spring-ai-starter-model-google-genai-embedding</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+
+			<dependency>
+				<groupId>org.springframework.ai</groupId>
 				<artifactId>spring-ai-starter-model-zhipuai</artifactId>
 				<version>${project.version}</version>
 			</dependency>
@@ -1034,6 +1076,12 @@
 
 			<dependency>
 				<groupId>org.springframework.ai</groupId>
+				<artifactId>spring-ai-starter-mcp-server-common</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+
+			<dependency>
+				<groupId>org.springframework.ai</groupId>
 				<artifactId>spring-ai-starter-mcp-server</artifactId>
 				<version>${project.version}</version>
 			</dependency>
@@ -1049,6 +1097,13 @@
 				<artifactId>spring-ai-starter-mcp-server-webmvc</artifactId>
 				<version>${project.version}</version>
 			</dependency>
+
+			<dependency>
+				<groupId>org.springframework.ai</groupId>
+				<artifactId>spring-ai-mcp-annotations</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+
 
 			<!-- Spring AI Spring Boot starter for Chat Memory (with the default in-memory Chat memory repository) -->
 

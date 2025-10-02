@@ -22,15 +22,15 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
+import reactor.core.publisher.Flux;
 
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.metadata.ChatGenerationMetadata;
 import org.springframework.ai.chat.metadata.ChatResponseMetadata;
-import reactor.core.publisher.Flux;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.springframework.ai.chat.messages.AssistantMessage.*;
+import static org.springframework.ai.chat.messages.AssistantMessage.ToolCall;
 
 /**
  * Unit tests for {@link ChatResponse}.
@@ -43,8 +43,11 @@ class ChatResponseTests {
 	@Test
 	void whenToolCallsArePresentThenReturnTrue() {
 		ChatResponse chatResponse = ChatResponse.builder()
-			.generations(List.of(new Generation(
-					new AssistantMessage("", Map.of(), List.of(new ToolCall("toolA", "function", "toolA", "{}"))))))
+			.generations(List.of(new Generation(AssistantMessage.builder()
+				.content("")
+				.properties(Map.of())
+				.toolCalls(List.of(new ToolCall("toolA", "function", "toolA", "{}")))
+				.build())))
 			.build();
 		assertThat(chatResponse.hasToolCalls()).isTrue();
 	}
@@ -136,8 +139,11 @@ class ChatResponseTests {
 	void whenMultipleGenerationsWithToolCallsThenReturnTrue() {
 		ChatResponse chatResponse = ChatResponse.builder()
 			.generations(List.of(new Generation(new AssistantMessage("First response")),
-					new Generation(new AssistantMessage("", Map.of(),
-							List.of(new ToolCall("toolB", "function", "toolB", "{}"))))))
+					new Generation(AssistantMessage.builder()
+						.content("")
+						.properties(Map.of())
+						.toolCalls(List.of(new ToolCall("toolB", "function", "toolB", "{}")))
+						.build())))
 			.build();
 		assertThat(chatResponse.hasToolCalls()).isTrue();
 	}

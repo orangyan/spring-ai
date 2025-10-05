@@ -2,168 +2,130 @@
 
 ## 📋 目录
 - [概述](#概述)
-- [核心概念](#核心概念)
-- [接口体系](#接口体系)
-- [Document文档模型](#document文档模型)
-- [Embedding嵌入向量](#embedding嵌入向量)
-- [SearchRequest检索请求](#searchrequest检索请求)
+- [核心接口](#核心接口)
+- [VectorStore接口详解](#vectorstore接口详解)
+- [SearchRequest搜索请求](#searchrequest搜索请求)
 - [Filter过滤表达式](#filter过滤表达式)
-- [向量数据库实现](#向量数据库实现)
+- [SimpleVectorStore实现](#simplevectorstore实现)
+- [支持的向量数据库](#支持的向量数据库)
 - [使用指南](#使用指南)
 - [高级特性](#高级特性)
+- [实战场景](#实战场景)
 - [最佳实践](#最佳实践)
-- [实战示例](#实战示例)
 
 ---
 
 ## 概述
 
-### 什么是向量数据库？
+### 什么是Vector Store（向量数据库）？
 
-向量数据库是一种专门用于AI应用的特殊数据库，它存储数据的**向量表示（embeddings）**而不是原始数据。向量数据库的核心特点是执行**相似性搜索**而非传统的精确匹配。
-
-```
-传统数据库: WHERE name = '张三'        (精确匹配)
-向量数据库: WHERE similar(embedding, query_embedding) > 0.7  (相似性搜索)
-```
-
-### 工作原理
+**VectorStore** 是专门用于存储和检索**向量（embeddings）**的数据库，支持基于**向量相似度**的快速搜索。
 
 ```
-1. 文本内容 → 2. Embedding模型 → 3. 向量表示 → 4. 存储到向量数据库
-
-查询:
-1. 查询文本 → 2. Embedding模型 → 3. 查询向量 → 4. 相似性搜索 → 5. 返回相似文档
+文档 → Embedding → 向量数据库存储
+                       ↓
+查询 → Embedding → 相似度搜索 → 返回相关文档
 ```
 
-### 为什么需要向量数据库？
+### 为什么需要Vector Store？
 
-1. **语义搜索**: 理解查询的含义，而不仅仅是关键词匹配
-2. **RAG应用**: 为大语言模型提供相关上下文
-3. **推荐系统**: 找到相似的商品、文章、用户等
-4. **异常检测**: 识别与正常模式不同的数据
-5. **多模态搜索**: 跨文本、图片、音频等多种模态搜索
+1. ✅ **语义搜索**: 基于含义而非关键词查找
+2. ✅ **高效检索**: 支持大规模向量的快速相似度搜索
+3. ✅ **RAG应用**: 检索增强生成的基础设施
+4. ✅ **智能推荐**: 基于向量相似度的推荐系统
+5. ✅ **去重检测**: 识别语义相似的重复内容
+6. ✅ **知识管理**: 企业知识库的核心存储
 
-### Spring AI的设计理念
+### Vector Store的特点
 
-Spring AI通过统一的`VectorStore`接口抽象了各种向量数据库的实现，让开发者可以：
+| 特点 | 说明 |
+|------|------|
+| **向量索引** | 使用特殊索引（HNSW、IVF等）加速搜索 |
+| **相似度算法** | 余弦相似度、欧氏距离、点积等 |
+| **元数据过滤** | 支持基于元数据的过滤查询 |
+| **可扩展性** | 支持数百万到数十亿向量 |
+| **持久化** | 向量和元数据持久化存储 |
 
-- ✅ **无缝切换**向量数据库（PgVector、Chroma、Pinecone等）
-- ✅ **统一API**，学习一次处处使用
-- ✅ **可移植过滤表达式**，跨数据库工作
-- ✅ **Spring生态集成**，自动配置和依赖注入
-- ✅ **可观测性**，集成Micrometer监控
+### 应用场景
+
+- 📚 **知识库问答**: 根据问题检索相关文档
+- 🔍 **语义搜索**: 理解用户意图的搜索
+- 💬 **对话上下文**: 检索历史对话
+- 📄 **文档管理**: 企业文档的智能检索
+- 🎯 **推荐系统**: 基于内容的推荐
+- 🔎 **重复检测**: 识别相似内容
 
 ---
 
-## 核心概念
+## 核心接口
 
-### 1. 向量（Vector/Embedding）
-
-向量是数据的数值表示，通常是一个浮点数数组。
-
-```java
-// 文本 "Spring Boot" 的向量表示（简化示例）
-float[] embedding = new float[]{
-    0.123, -0.456, 0.789, ..., 0.321  // 1536维（OpenAI）
-};
-```
-
-**特点**:
-- **维度**: 通常是768、1536、3072等
-- **范围**: 通常在[-1, 1]或[0, 1]之间
-- **语义**: 相似的内容有相似的向量
-
-### 2. 相似度度量
-
-衡量两个向量的相似程度。
-
-#### 余弦相似度（Cosine Similarity）
-
-```java
-// 最常用，取值范围 [-1, 1]
-// 1: 完全相同
-// 0: 正交（无关）
-// -1: 完全相反
-
-cosine_similarity = (A · B) / (||A|| * ||B||)
-```
-
-#### 欧几里得距离（Euclidean Distance）
-
-```java
-// L2距离，值越小越相似
-euclidean_distance = sqrt(Σ(A[i] - B[i])²)
-```
-
-#### 内积（Inner Product）
-
-```java
-// 点积，值越大越相似（归一化向量）
-inner_product = A · B = Σ(A[i] * B[i])
-```
-
-### 3. 向量索引
-
-为了高效检索，向量数据库使用特殊的索引结构。
-
-#### HNSW (Hierarchical Navigable Small World)
+### 接口层次结构
 
 ```
-特点:
-- 高效的近似最近邻搜索
-- 查询速度快
-- 内存占用较大
-- 构建索引慢
-
-适用场景:
-- 实时查询要求高
-- 数据集不频繁更新
+DocumentWriter (写入接口)
+    ↑
+    │
+VectorStoreRetriever (只读检索接口)
+    ↑
+    │
+VectorStore (完整接口)
+    ↑
+    │
+├── SimpleVectorStore (简单实现)
+├── PgVectorStore (PostgreSQL)
+├── ChromaVectorStore (Chroma)
+├── PineconeVectorStore (Pinecone)
+└── ... (20+种实现)
 ```
 
-#### IVFFlat (Inverted File with Flat Compression)
-
-```
-特点:
-- 将向量分组到聚类中
-- 构建索引快
-- 内存占用小
-- 查询速度中等
-
-适用场景:
-- 数据集频繁更新
-- 内存受限
-```
-
-#### Flat（暴力搜索）
-
-```
-特点:
-- 精确搜索，100%准确
-- 无索引开销
-- 查询慢（O(n)）
-
-适用场景:
-- 小数据集
-- 需要精确结果
-```
-
----
-
-## 接口体系
-
-### 1. VectorStore接口（完整功能）
+### VectorStoreRetriever（只读接口）
 
 ```java
 /**
- * 向量数据库完整接口
- * 提供读写操作
+ * 向量存储只读检索接口
+ * 遵循最小权限原则，仅暴露检索功能
+ */
+@FunctionalInterface
+public interface VectorStoreRetriever {
+    
+    /**
+     * 相似度搜索（完整版）
+     * @param request 搜索请求
+     * @return 相似文档列表
+     */
+    List<Document> similaritySearch(SearchRequest request);
+    
+    /**
+     * 相似度搜索（简化版）
+     * @param query 查询文本
+     * @return 相似文档列表
+     */
+    default List<Document> similaritySearch(String query) {
+        return this.similaritySearch(
+            SearchRequest.builder()
+                .query(query)
+                .build()
+        );
+    }
+}
+```
+
+---
+
+## VectorStore接口详解
+
+### 完整接口定义
+
+```java
+/**
+ * 向量存储完整接口
+ * 扩展DocumentWriter和VectorStoreRetriever
  */
 public interface VectorStore 
     extends DocumentWriter, VectorStoreRetriever {
     
     /**
-     * 获取向量库名称
+     * 获取向量存储名称
      */
     default String getName() {
         return this.getClass().getSimpleName();
@@ -172,52 +134,51 @@ public interface VectorStore
     /**
      * 添加文档
      * @param documents 文档列表
+     * @throws IllegalStateException 如果有重复ID
      */
     void add(List<Document> documents);
     
     /**
-     * 删除文档（按ID）
+     * 实现DocumentWriter接口
+     */
+    @Override
+    default void accept(List<Document> documents) {
+        add(documents);
+    }
+    
+    /**
+     * 按ID删除文档
      * @param idList 文档ID列表
      */
     void delete(List<String> idList);
     
     /**
-     * 删除文档（按过滤条件）
+     * 按过滤条件删除文档
      * @param filterExpression 过滤表达式
      */
     void delete(Filter.Expression filterExpression);
     
     /**
-     * 删除文档（按字符串过滤表达式）
-     * @param filterExpression SQL样式的过滤表达式
+     * 按过滤条件删除文档（字符串版本）
+     * @param filterExpression 过滤表达式字符串
      */
     default void delete(String filterExpression) {
-        SearchRequest request = SearchRequest.builder()
+        SearchRequest searchRequest = SearchRequest.builder()
             .filterExpression(filterExpression)
             .build();
-        delete(request.getFilterExpression());
-    }
-    
-    /**
-     * 相似性搜索
-     * @param request 搜索请求
-     * @return 相似文档列表
-     */
-    List<Document> similaritySearch(SearchRequest request);
-    
-    /**
-     * 相似性搜索（简化版）
-     * @param query 查询文本
-     * @return 相似文档列表
-     */
-    default List<Document> similaritySearch(String query) {
-        return similaritySearch(
-            SearchRequest.builder().query(query).build()
-        );
+        
+        Filter.Expression textExpression = 
+            searchRequest.getFilterExpression();
+        
+        Assert.notNull(textExpression, 
+            "Filter expression must not be null");
+        
+        this.delete(textExpression);
     }
     
     /**
      * 获取原生客户端（可选）
+     * @return 原生客户端的Optional
      */
     default <T> Optional<T> getNativeClient() {
         return Optional.empty();
@@ -225,414 +186,28 @@ public interface VectorStore
 }
 ```
 
-### 2. VectorStoreRetriever接口（只读）
+### 核心方法说明
 
-```java
-/**
- * 只读向量检索接口
- * 遵循最小权限原则，只暴露检索功能
- */
-@FunctionalInterface
-public interface VectorStoreRetriever {
-    
-    /**
-     * 相似性搜索
-     */
-    List<Document> similaritySearch(SearchRequest request);
-    
-    /**
-     * 简化的相似性搜索
-     */
-    default List<Document> similaritySearch(String query) {
-        return similaritySearch(
-            SearchRequest.builder().query(query).build()
-        );
-    }
-}
-```
-
-### 3. 接口层次结构
-
-```
-DocumentWriter (写入接口)
-    ↑
-    │
-VectorStore ←────── VectorStoreRetriever (读取接口)
-    │                       ↑
-    │                       │ (只读访问)
-    ├─ add()               │
-    ├─ delete()            └─ similaritySearch()
-    └─ similaritySearch()
-
-使用场景:
-- VectorStore: 完整功能，用于数据管理
-- VectorStoreRetriever: 只读访问，用于检索（如RAG）
-```
-
-### 4. Builder接口
-
-```java
-/**
- * VectorStore构建器
- */
-interface Builder<T extends Builder<T>> {
-    
-    /**
-     * 设置观测注册表
-     */
-    T observationRegistry(ObservationRegistry registry);
-    
-    /**
-     * 设置自定义观测约定
-     */
-    T customObservationConvention(
-        VectorStoreObservationConvention convention
-    );
-    
-    /**
-     * 设置批处理策略
-     */
-    T batchingStrategy(BatchingStrategy strategy);
-    
-    /**
-     * 构建VectorStore实例
-     */
-    VectorStore build();
-}
-```
+| 方法 | 功能 | 适用场景 |
+|------|------|----------|
+| `add(List<Document>)` | 添加文档到向量存储 | 批量导入文档 |
+| `similaritySearch(SearchRequest)` | 相似度搜索 | 查找相关文档 |
+| `similaritySearch(String)` | 简化搜索 | 快速查询 |
+| `delete(List<String>)` | 按ID删除 | 精确删除 |
+| `delete(Filter.Expression)` | 按条件删除 | 批量删除 |
+| `accept(List<Document>)` | DocumentWriter实现 | 流式处理 |
 
 ---
 
-## Document文档模型
+## SearchRequest搜索请求
 
-### Document类
-
-```java
-/**
- * 文档是向量库的基本存储单元
- * 包含文本内容、元数据和可选的嵌入向量
- */
-public class Document implements Serializable {
-    
-    /**
-     * 文档唯一标识符
-     */
-    private String id;
-    
-    /**
-     * 文档文本内容
-     */
-    private String text;
-    
-    /**
-     * 文档元数据（可搜索）
-     */
-    private Map<String, Object> metadata;
-    
-    /**
-     * 嵌入向量（可选）
-     */
-    @Nullable
-    private float[] embedding;
-    
-    /**
-     * 媒体数据（可选，用于多模态）
-     */
-    @Nullable
-    private List<Media> media;
-    
-    // 构造方法
-    public Document(String text) {
-        this(UUID.randomUUID().toString(), text, Map.of());
-    }
-    
-    public Document(String text, Map<String, Object> metadata) {
-        this(UUID.randomUUID().toString(), text, metadata);
-    }
-    
-    public Document(String id, String text, 
-                   Map<String, Object> metadata) {
-        this.id = id;
-        this.text = text;
-        this.metadata = new HashMap<>(metadata);
-    }
-    
-    // Builder模式
-    public static Builder builder() {
-        return new Builder();
-    }
-    
-    public static class Builder {
-        private String id = UUID.randomUUID().toString();
-        private String text;
-        private Map<String, Object> metadata = new HashMap<>();
-        private float[] embedding;
-        
-        public Builder id(String id) {
-            this.id = id;
-            return this;
-        }
-        
-        public Builder text(String text) {
-            this.text = text;
-            return this;
-        }
-        
-        public Builder metadata(String key, Object value) {
-            this.metadata.put(key, value);
-            return this;
-        }
-        
-        public Builder metadata(Map<String, Object> metadata) {
-            this.metadata.putAll(metadata);
-            return this;
-        }
-        
-        public Builder embedding(float[] embedding) {
-            this.embedding = embedding;
-            return this;
-        }
-        
-        public Document build() {
-            Document doc = new Document(id, text, metadata);
-            if (embedding != null) {
-                doc.setEmbedding(embedding);
-            }
-            return doc;
-        }
-    }
-}
-```
-
-### 创建Document示例
-
-```java
-// 1. 最简单的方式
-Document doc1 = new Document("Spring Boot是一个快速开发框架");
-
-// 2. 带元数据
-Document doc2 = new Document(
-    "Spring Boot是一个快速开发框架",
-    Map.of(
-        "category", "技术",
-        "language", "Java",
-        "year", 2014,
-        "author", "Pivotal"
-    )
-);
-
-// 3. 使用Builder
-Document doc3 = Document.builder()
-    .id("doc-001")
-    .text("Spring Boot是一个快速开发框架")
-    .metadata("category", "技术")
-    .metadata("language", "Java")
-    .metadata("year", 2014)
-    .metadata("tags", List.of("framework", "microservice"))
-    .build();
-
-// 4. 带预计算的嵌入向量
-Document doc4 = Document.builder()
-    .text("Spring Boot是一个快速开发框架")
-    .metadata("source", "documentation")
-    .embedding(precomputedEmbedding)  // float[]
-    .build();
-```
-
-### 元数据最佳实践
-
-```java
-// 推荐的元数据结构
-Document doc = Document.builder()
-    .text(content)
-    
-    // 来源信息
-    .metadata("source", "document.pdf")
-    .metadata("sourceType", "pdf")
-    .metadata("page", 5)
-    
-    // 分类信息
-    .metadata("category", "技术文档")
-    .metadata("subcategory", "架构设计")
-    .metadata("tags", List.of("微服务", "Spring"))
-    
-    // 时间信息
-    .metadata("createdAt", Instant.now())
-    .metadata("updatedAt", Instant.now())
-    .metadata("year", 2024)
-    
-    // 访问控制
-    .metadata("tenantId", "company-001")
-    .metadata("department", "研发部")
-    .metadata("accessLevel", "internal")
-    
-    // 内容特征
-    .metadata("language", "zh-CN")
-    .metadata("wordCount", 500)
-    .metadata("complexity", "intermediate")
-    
-    .build();
-```
-
----
-
-## Embedding嵌入向量
-
-### EmbeddingModel接口
+### 完整定义
 
 ```java
 /**
- * 嵌入模型接口
- * 将文本转换为向量表示
- */
-public interface EmbeddingModel 
-    extends Model<EmbeddingRequest, EmbeddingResponse> {
-    
-    /**
-     * 嵌入单个文本
-     * @param text 要嵌入的文本
-     * @return 嵌入向量
-     */
-    default float[] embed(String text) {
-        List<float[]> embeddings = embed(List.of(text));
-        return embeddings.get(0);
-    }
-    
-    /**
-     * 嵌入文档
-     * @param document 要嵌入的文档
-     * @return 嵌入向量
-     */
-    float[] embed(Document document);
-    
-    /**
-     * 批量嵌入文本
-     * @param texts 文本列表
-     * @return 嵌入向量列表
-     */
-    default List<float[]> embed(List<String> texts) {
-        return call(new EmbeddingRequest(texts, null))
-            .getResults()
-            .stream()
-            .map(Embedding::getOutput)
-            .toList();
-    }
-    
-    /**
-     * 批量嵌入文档（带批处理策略）
-     */
-    default List<float[]> embed(
-            List<Document> documents,
-            EmbeddingOptions options,
-            BatchingStrategy batchingStrategy) {
-        // 实现批处理逻辑
-    }
-}
-```
-
-### 常见的Embedding模型
-
-```java
-// 1. OpenAI Embeddings
-OpenAiEmbeddingModel embeddingModel = OpenAiEmbeddingModel.builder()
-    .apiKey(apiKey)
-    .modelName("text-embedding-3-small")  // 1536维
-    // .modelName("text-embedding-3-large")  // 3072维
-    .build();
-
-// 2. Azure OpenAI
-AzureOpenAiEmbeddingModel embeddingModel = 
-    AzureOpenAiEmbeddingModel.builder()
-        .endpoint(endpoint)
-        .apiKey(apiKey)
-        .deploymentName(deploymentName)
-        .build();
-
-// 3. Ollama (本地)
-OllamaEmbeddingModel embeddingModel = OllamaEmbeddingModel.builder()
-    .baseUrl("http://localhost:11434")
-    .modelName("nomic-embed-text")  // 768维
-    .build();
-
-// 4. Transformers (本地)
-TransformersEmbeddingModel embeddingModel = 
-    new TransformersEmbeddingModel();
-
-// 5. Google VertexAI
-VertexAiEmbeddingModel embeddingModel = 
-    VertexAiEmbeddingModel.builder()
-        .projectId(projectId)
-        .location("us-central1")
-        .modelName("textembedding-gecko@003")
-        .build();
-```
-
-### 使用示例
-
-```java
-@Service
-public class EmbeddingService {
-    
-    private final EmbeddingModel embeddingModel;
-    
-    public float[] embedText(String text) {
-        return embeddingModel.embed(text);
-    }
-    
-    public List<float[]> embedBatch(List<String> texts) {
-        return embeddingModel.embed(texts);
-    }
-    
-    public Document embedDocument(Document document) {
-        float[] embedding = embeddingModel.embed(document);
-        document.setEmbedding(embedding);
-        return document;
-    }
-    
-    public List<Document> embedDocuments(List<Document> documents) {
-        return documents.stream()
-            .map(this::embedDocument)
-            .toList();
-    }
-    
-    // 计算相似度
-    public double cosineSimilarity(float[] vec1, float[] vec2) {
-        double dotProduct = 0.0;
-        double norm1 = 0.0;
-        double norm2 = 0.0;
-        
-        for (int i = 0; i < vec1.length; i++) {
-            dotProduct += vec1[i] * vec2[i];
-            norm1 += vec1[i] * vec1[i];
-            norm2 += vec2[i] * vec2[i];
-        }
-        
-        return dotProduct / (Math.sqrt(norm1) * Math.sqrt(norm2));
-    }
-}
-```
-
----
-
-## SearchRequest检索请求
-
-### SearchRequest类
-
-```java
-/**
- * 相似性搜索请求配置
+ * 相似度搜索请求
  */
 public class SearchRequest {
-    
-    /**
-     * 接受所有相似度的阈值
-     */
-    public static final double SIMILARITY_THRESHOLD_ACCEPT_ALL = 0.0;
-    
-    /**
-     * 默认返回Top K结果数
-     */
-    public static final int DEFAULT_TOP_K = 4;
     
     /**
      * 查询文本
@@ -640,12 +215,15 @@ public class SearchRequest {
     private String query = "";
     
     /**
-     * 返回Top K个最相似结果
+     * 返回Top K个结果
+     * 默认：4
      */
     private int topK = DEFAULT_TOP_K;
     
     /**
-     * 相似度阈值 (0.0 - 1.0)
+     * 相似度阈值（0.0 - 1.0）
+     * 0.0 = 接受所有
+     * 1.0 = 要求完全匹配
      */
     private double similarityThreshold = SIMILARITY_THRESHOLD_ACCEPT_ALL;
     
@@ -655,73 +233,102 @@ public class SearchRequest {
     @Nullable
     private Filter.Expression filterExpression;
     
+    // Getters
+    public String getQuery() { return query; }
+    public int getTopK() { return topK; }
+    public double getSimilarityThreshold() { return similarityThreshold; }
+    public Filter.Expression getFilterExpression() { return filterExpression; }
+    
+    /**
+     * 是否有过滤表达式
+     */
+    public boolean hasFilterExpression() {
+        return filterExpression != null;
+    }
+    
     // Builder模式
     public static Builder builder() {
         return new Builder();
     }
     
-    public static class Builder {
-        
-        /**
-         * 设置查询文本
-         */
-        public Builder query(String query) {
-            this.searchRequest.query = query;
-            return this;
-        }
-        
-        /**
-         * 设置Top K
-         */
-        public Builder topK(int topK) {
-            Assert.isTrue(topK >= 0, "TopK should be positive.");
-            this.searchRequest.topK = topK;
-            return this;
-        }
-        
-        /**
-         * 设置相似度阈值
-         * @param threshold 0.0 - 1.0
-         */
-        public Builder similarityThreshold(double threshold) {
-            Assert.isTrue(threshold >= 0 && threshold <= 1, 
-                "Similarity threshold must be in [0,1] range.");
-            this.searchRequest.similarityThreshold = threshold;
-            return this;
-        }
-        
-        /**
-         * 接受所有相似度（阈值=0.0）
-         */
-        public Builder similarityThresholdAll() {
-            this.searchRequest.similarityThreshold = 0.0;
-            return this;
-        }
-        
-        /**
-         * 设置过滤表达式
-         */
-        public Builder filterExpression(Filter.Expression expression) {
-            this.searchRequest.filterExpression = expression;
-            return this;
-        }
-        
-        /**
-         * 设置过滤表达式（字符串）
-         */
-        public Builder filterExpression(String expression) {
-            if (StringUtils.hasText(expression)) {
-                FilterExpressionTextParser parser = 
-                    new FilterExpressionTextParser();
-                this.searchRequest.filterExpression = 
-                    parser.parse(expression);
-            }
-            return this;
-        }
-        
-        public SearchRequest build() {
-            return this.searchRequest;
-        }
+    /**
+     * 从现有请求复制
+     */
+    public static Builder from(SearchRequest original) {
+        return builder()
+            .query(original.getQuery())
+            .topK(original.getTopK())
+            .similarityThreshold(original.getSimilarityThreshold())
+            .filterExpression(original.getFilterExpression());
+    }
+}
+```
+
+### Builder使用
+
+```java
+/**
+ * SearchRequest Builder
+ */
+public static class Builder {
+    
+    /**
+     * 设置查询文本
+     */
+    public Builder query(String query) {
+        Assert.notNull(query, "Query can not be null.");
+        this.searchRequest.query = query;
+        return this;
+    }
+    
+    /**
+     * 设置Top K
+     */
+    public Builder topK(int topK) {
+        Assert.isTrue(topK >= 0, "TopK should be positive.");
+        this.searchRequest.topK = topK;
+        return this;
+    }
+    
+    /**
+     * 设置相似度阈值
+     * @param threshold 0.0-1.0之间
+     */
+    public Builder similarityThreshold(double threshold) {
+        Assert.isTrue(threshold >= 0 && threshold <= 1,
+            "Similarity threshold must be in [0,1] range.");
+        this.searchRequest.similarityThreshold = threshold;
+        return this;
+    }
+    
+    /**
+     * 禁用相似度阈值（接受所有）
+     */
+    public Builder similarityThresholdAll() {
+        this.searchRequest.similarityThreshold = 0.0;
+        return this;
+    }
+    
+    /**
+     * 设置过滤表达式
+     */
+    public Builder filterExpression(Filter.Expression expression) {
+        this.searchRequest.filterExpression = expression;
+        return this;
+    }
+    
+    /**
+     * 设置过滤表达式（字符串版本）
+     */
+    public Builder filterExpression(String textExpression) {
+        this.searchRequest.filterExpression = (textExpression != null) ?
+            new FilterExpressionTextParser().parse(textExpression) :
+            null;
+        return this;
+    }
+    
+    public SearchRequest build() {
+        return this.searchRequest;
     }
 }
 ```
@@ -729,547 +336,436 @@ public class SearchRequest {
 ### 使用示例
 
 ```java
-@Service
-public class VectorSearchService {
-    
-    private final VectorStore vectorStore;
-    
-    // 1. 最简单的搜索
-    public List<Document> simpleSearch(String query) {
-        return vectorStore.similaritySearch(query);
-    }
-    
-    // 2. 限制返回数量
-    public List<Document> searchTopK(String query, int topK) {
-        SearchRequest request = SearchRequest.builder()
-            .query(query)
-            .topK(topK)
-            .build();
-        
-        return vectorStore.similaritySearch(request);
-    }
-    
-    // 3. 设置相似度阈值
-    public List<Document> searchWithThreshold(
-            String query, 
-            double threshold) {
-        
-        SearchRequest request = SearchRequest.builder()
-            .query(query)
-            .topK(10)
-            .similarityThreshold(threshold)  // 0.7表示70%以上相似
-            .build();
-        
-        return vectorStore.similaritySearch(request);
-    }
-    
-    // 4. 带过滤条件
-    public List<Document> searchWithFilter(
-            String query,
-            String category) {
-        
-        SearchRequest request = SearchRequest.builder()
-            .query(query)
-            .topK(5)
-            .similarityThreshold(0.7)
-            .filterExpression("category == '" + category + "'")
-            .build();
-        
-        return vectorStore.similaritySearch(request);
-    }
-    
-    // 5. 复杂搜索
-    public List<Document> advancedSearch(
-            String query,
-            int topK,
-            double threshold,
-            String department,
-            int minYear) {
-        
-        SearchRequest request = SearchRequest.builder()
-            .query(query)
-            .topK(topK)
-            .similarityThreshold(threshold)
-            .filterExpression(String.format(
-                "department == '%s' && year >= %d",
-                department, minYear
-            ))
-            .build();
-        
-        return vectorStore.similaritySearch(request);
-    }
-}
+// 1. 最简单的搜索
+SearchRequest request1 = SearchRequest.builder()
+    .query("Spring AI是什么？")
+    .build();
+
+// 2. 带Top K的搜索
+SearchRequest request2 = SearchRequest.builder()
+    .query("如何使用ChatClient？")
+    .topK(10)
+    .build();
+
+// 3. 带相似度阈值的搜索
+SearchRequest request3 = SearchRequest.builder()
+    .query("RAG应用示例")
+    .topK(5)
+    .similarityThreshold(0.75)  // 只返回相似度>0.75的结果
+    .build();
+
+// 4. 带元数据过滤的搜索
+SearchRequest request4 = SearchRequest.builder()
+    .query("技术文档")
+    .topK(10)
+    .filterExpression("category == 'tutorial' && year >= 2024")
+    .build();
+
+// 5. 复杂过滤
+SearchRequest request5 = SearchRequest.builder()
+    .query("Spring Boot教程")
+    .topK(20)
+    .similarityThreshold(0.6)
+    .filterExpression(
+        "type == 'article' && " +
+        "(tag IN ['java', 'spring'] || author == 'admin')"
+    )
+    .build();
 ```
 
 ---
 
 ## Filter过滤表达式
 
-### Filter.Expression（表达式树）
+### Filter表达式概述
+
+Spring AI提供了**跨向量数据库通用**的过滤表达式语法，类似SQL WHERE子句。
+
+### 1. 表达式类型
 
 ```java
 /**
- * 过滤表达式
- * 跨所有向量数据库可移植
+ * 过滤表达式类型
  */
-public interface Filter {
+public enum ExpressionType {
     
-    /**
-     * 表达式节点
-     */
-    record Expression(
-        ExpressionType type,
-        Expression left,
-        Expression right,
-        Key key,
-        Value value
-    ) {}
+    // 比较操作
+    EQ,   // 等于 (==)
+    NE,   // 不等于 (!=)
+    GT,   // 大于 (>)
+    GTE,  // 大于等于 (>=)
+    LT,   // 小于 (<)
+    LTE,  // 小于等于 (<=)
     
-    /**
-     * 表达式类型
-     */
-    enum ExpressionType {
-        // 逻辑运算符
-        AND, OR, NOT,
-        
-        // 比较运算符
-        EQ,   // ==
-        NE,   // !=
-        LT,   // <
-        LTE,  // <=
-        GT,   // >
-        GTE,  // >=
-        
-        // 特殊运算符
-        IN,   // in
-        NIN,  // not in
-    }
+    // 集合操作
+    IN,   // 在集合中
+    NIN,  // 不在集合中
     
-    /**
-     * 元数据键
-     */
-    record Key(String key) {}
-    
-    /**
-     * 值
-     */
-    record Value(Object value) {}
+    // 逻辑操作
+    AND,  // 与
+    OR,   // 或
+    NOT   // 非
 }
 ```
 
-### 创建过滤表达式的三种方式
-
-#### 1. 程序化构建
+### 2. 表达式组件
 
 ```java
-// 构建: country == 'China' && year >= 2020
-Filter.Expression expression = new Filter.Expression(
-    AND,
+/**
+ * 过滤表达式的组成部分
+ */
+
+// 键（字段名）
+public record Key(String key) implements Operand {}
+
+// 值（常量）
+public record Value(Object value) implements Operand {}
+
+// 表达式
+public record Expression(
+    ExpressionType type,
+    Operand left,
+    Operand right
+) implements Operand {}
+
+// 分组（括号）
+public record Group(Expression content) implements Operand {}
+```
+
+### 3. 三种创建方式
+
+#### 方式1：手动构建
+
+```java
+// country == "BG"
+var exp1 = new Filter.Expression(
+    ExpressionType.EQ,
+    new Filter.Key("country"),
+    new Filter.Value("BG")
+);
+
+// genre == "drama" AND year >= 2020
+var exp2 = new Filter.Expression(
+    ExpressionType.AND,
     new Filter.Expression(
-        EQ,
-        new Filter.Key("country"),
-        new Filter.Value("China")
+        ExpressionType.EQ,
+        new Filter.Key("genre"),
+        new Filter.Value("drama")
     ),
     new Filter.Expression(
-        GTE,
+        ExpressionType.GTE,
         new Filter.Key("year"),
         new Filter.Value(2020)
     )
 );
-```
 
-#### 2. 使用FilterExpressionBuilder (DSL)
-
-```java
-FilterExpressionBuilder builder = new FilterExpressionBuilder();
-
-// 简单条件
-Filter.Expression exp1 = builder.eq("country", "China");
-
-// 复合条件
-Filter.Expression exp2 = builder.and(
-    builder.eq("country", "China"),
-    builder.gte("year", 2020),
-    builder.eq("isActive", true)
-);
-
-// 复杂嵌套
-Filter.Expression exp3 = builder.and(
-    builder.or(
-        builder.eq("country", "China"),
-        builder.eq("country", "USA")
-    ),
-    builder.and(
-        builder.gte("year", 2020"),
-        builder.lte("year", 2024)
-    ),
-    builder.in("category", List.of("Tech", "Science"))
+// genre IN ["comedy", "documentary", "drama"]
+var exp3 = new Filter.Expression(
+    ExpressionType.IN,
+    new Filter.Key("genre"),
+    new Filter.Value(List.of("comedy", "documentary", "drama"))
 );
 ```
 
-#### 3. 文本解析（最推荐）
+#### 方式2：使用Builder DSL
 
 ```java
-FilterExpressionTextParser parser = 
-    new FilterExpressionTextParser();
+var b = new FilterExpressionBuilder();
 
-// 简单表达式
-Filter.Expression exp1 = parser.parse("country == 'China'");
+// 1. country == "BG"
+var exp1 = b.eq("country", "BG");
 
-// 复合表达式
-Filter.Expression exp2 = parser.parse(
-    "country == 'China' && year >= 2020"
+// 2. genre == "drama" AND year >= 2020
+var exp2 = b.and(
+    b.eq("genre", "drama"),
+    b.gte("year", 2020)
 );
+
+// 3. genre IN ["comedy", "documentary", "drama"]
+var exp3 = b.in("genre", "comedy", "documentary", "drama");
+
+// 4. year >= 2020 OR country == "BG" AND city != "Sofia"
+var exp4 = b.and(
+    b.or(b.gte("year", 2020), b.eq("country", "BG")),
+    b.ne("city", "Sofia")
+);
+
+// 5. (year >= 2020 OR country == "BG") AND city NIN ["Sofia", "Plovdiv"]
+var exp5 = b.and(
+    b.group(b.or(b.gte("year", 2020), b.eq("country", "BG"))),
+    b.nin("city", "Sofia", "Plovdiv")
+);
+
+// 6. isOpen == true AND year >= 2020 AND country IN ["BG", "NL", "US"]
+var exp6 = b.and(
+    b.and(b.eq("isOpen", true), b.gte("year", 2020)),
+    b.in("country", "BG", "NL", "US")
+);
+```
+
+#### 方式3：使用文本解析器
+
+```java
+var parser = new FilterExpressionTextParser();
+
+// 简单比较
+var exp1 = parser.parse("country == 'BG'");
+
+// 逻辑组合
+var exp2 = parser.parse("genre == 'drama' && year >= 2020");
+
+// IN操作
+var exp3 = parser.parse("genre IN ['comedy', 'documentary', 'drama']");
 
 // 复杂表达式
-Filter.Expression exp3 = parser.parse("""
-    (country == 'China' || country == 'USA') &&
-    year >= 2020 && year <= 2024 &&
-    category in ['Tech', 'Science'] &&
-    isActive == true &&
-    price > 100.0
-    """
+var exp4 = parser.parse(
+    "year >= 2020 || (country == 'BG' && city != 'Sofia')"
+);
+
+// 带括号分组
+var exp5 = parser.parse(
+    "(year >= 2020 || country == 'BG') && city NOT IN ['Sofia', 'Plovdiv']"
+);
+
+// 多条件组合
+var exp6 = parser.parse(
+    "isOpen == true && year >= 2020 && country IN ['BG', 'NL', 'US']"
 );
 ```
 
-### 过滤表达式语法
+### 4. 支持的操作符
 
-```sql
--- 比较运算符
-key == value       -- 等于
-key != value       -- 不等于
-key > value        -- 大于
-key >= value       -- 大于等于
-key < value        -- 小于
-key <= value       -- 小于等于
+| 操作类型 | 操作符 | 示例 |
+|---------|-------|------|
+| **相等** | `==` | `country == 'UK'` |
+| **不等** | `!=` | `status != 'deleted'` |
+| **大于** | `>` | `price > 100` |
+| **大于等于** | `>=` | `year >= 2020` |
+| **小于** | `<` | `age < 18` |
+| **小于等于** | `<=` | `score <= 0.5` |
+| **在集合中** | `IN` | `tag IN ['java', 'spring']` |
+| **不在集合中** | `NOT IN` | `city NOT IN ['Sofia']` |
+| **逻辑与** | `&&` 或 `AND` | `a == 1 && b == 2` |
+| **逻辑或** | `\|\|` 或 `OR` | `a == 1 \|\| b == 2` |
+| **非** | `NOT` | `NOT (a == 1)` |
 
--- 逻辑运算符
-expr1 && expr2     -- 与
-expr1 || expr2     -- 或
-!expr              -- 非
-
--- IN运算符
-key in [val1, val2, val3]      -- 包含
-key nin [val1, val2, val3]     -- 不包含
-
--- 值类型
-'string'           -- 字符串
-123                -- 整数
-123.45             -- 小数
-true/false         -- 布尔值
-[val1, val2]       -- 数组
-```
-
-### 实战示例
+### 5. 数据类型支持
 
 ```java
-@Service
-public class FilteredSearchService {
-    
-    private final VectorStore vectorStore;
-    private final FilterExpressionTextParser parser = 
-        new FilterExpressionTextParser();
-    
-    // 1. 按类别过滤
-    public List<Document> searchByCategory(
-            String query,
-            String category) {
-        
-        return vectorStore.similaritySearch(
-            SearchRequest.builder()
-                .query(query)
-                .topK(5)
-                .filterExpression("category == '" + category + "'")
-                .build()
-        );
-    }
-    
-    // 2. 按时间范围过滤
-    public List<Document> searchByDateRange(
-            String query,
-            int startYear,
-            int endYear) {
-        
-        String filter = String.format(
-            "year >= %d && year <= %d",
-            startYear, endYear
-        );
-        
-        return vectorStore.similaritySearch(
-            SearchRequest.builder()
-                .query(query)
-                .filterExpression(filter)
-                .build()
-        );
-    }
-    
-    // 3. 多条件组合
-    public List<Document> advancedFilter(
-            String query,
-            String department,
-            List<String> tags,
-            boolean isActive) {
-        
-        String filter = String.format(
-            "department == '%s' && " +
-            "tags in %s && " +
-            "isActive == %s",
-            department,
-            tags.toString().replace("[", "['").replace("]", "']")
-                .replace(", ", "', '"),
-            isActive
-        );
-        
-        return vectorStore.similaritySearch(
-            SearchRequest.builder()
-                .query(query)
-                .filterExpression(filter)
-                .build()
-        );
-    }
-    
-    // 4. 租户隔离
-    public List<Document> searchByTenant(
-            String query,
-            String tenantId,
-            String userId) {
-        
-        String filter = String.format(
-            "tenantId == '%s' && " +
-            "(accessLevel == 'public' || ownerId == '%s')",
-            tenantId, userId
-        );
-        
-        return vectorStore.similaritySearch(
-            SearchRequest.builder()
-                .query(query)
-                .filterExpression(filter)
-                .build()
-        );
-    }
-    
-    // 5. 动态构建过滤器
-    public List<Document> dynamicSearch(
-            String query,
-            Map<String, Object> filters) {
-        
-        List<String> conditions = new ArrayList<>();
-        
-        if (filters.containsKey("category")) {
-            conditions.add(
-                "category == '" + filters.get("category") + "'"
-            );
-        }
-        
-        if (filters.containsKey("minYear")) {
-            conditions.add(
-                "year >= " + filters.get("minYear")
-            );
-        }
-        
-        if (filters.containsKey("tags")) {
-            @SuppressWarnings("unchecked")
-            List<String> tags = (List<String>) filters.get("tags");
-            String tagsStr = tags.stream()
-                .map(t -> "'" + t + "'")
-                .collect(Collectors.joining(", "));
-            conditions.add("tags in [" + tagsStr + "]");
-        }
-        
-        String filter = String.join(" && ", conditions);
-        
-        return vectorStore.similaritySearch(
-            SearchRequest.builder()
-                .query(query)
-                .filterExpression(filter)
-                .build()
-        );
-    }
-}
+// 字符串
+"country == 'China'"
+
+// 数字
+"year >= 2020"
+"price < 99.99"
+
+// 布尔值
+"isActive == true"
+"isDeleted != false"
+
+// 数组
+"tags IN ['java', 'spring', 'ai']"
+"colors NOT IN ['red', 'blue']"
 ```
 
 ---
 
-## 向量数据库实现
+## SimpleVectorStore实现
 
-Spring AI支持20+种向量数据库，每种都有其特点和适用场景。
+### 概述
 
-### 1. PgVector (PostgreSQL)
+`SimpleVectorStore` 是Spring AI提供的**内存向量存储**实现，适合开发和测试。
 
-**特点**:
-- ✅ 基于PostgreSQL，稳定可靠
-- ✅ ACID事务支持
-- ✅ 丰富的SQL生态
-- ✅ 免费开源
-
-**配置**:
+### 核心实现
 
 ```java
-@Configuration
-public class PgVectorConfig {
+/**
+ * 简单内存向量存储实现
+ */
+public class SimpleVectorStore extends AbstractObservationVectorStore {
     
-    @Bean
-    public VectorStore pgVectorStore(
-            JdbcTemplate jdbcTemplate,
+    /**
+     * 内存存储
+     * Key: 文档ID
+     * Value: 文档内容+向量
+     */
+    protected Map<String, SimpleVectorStoreContent> store = 
+        new ConcurrentHashMap<>();
+    
+    /**
+     * 嵌入模型
+     */
+    private final EmbeddingModel embeddingModel;
+    
+    /**
+     * 创建Builder
+     */
+    public static SimpleVectorStoreBuilder builder(
             EmbeddingModel embeddingModel) {
-        
-        return PgVectorStore.builder(jdbcTemplate, embeddingModel)
-            .schemaName("public")
-            .vectorTableName("vector_store")
-            .dimensions(1536)  // OpenAI embedding维度
-            .distanceType(PgDistanceType.COSINE_DISTANCE)
-            .indexType(PgIndexType.HNSW)
-            .initializeSchema(true)  // 自动创建表
-            .build();
+        return new SimpleVectorStoreBuilder(embeddingModel);
     }
+    
+    /**
+     * 添加文档
+     */
+    @Override
+    public void doAdd(List<Document> documents) {
+        Objects.requireNonNull(documents, "Documents list cannot be null");
+        
+        if (documents.isEmpty()) {
+            throw new IllegalArgumentException(
+                "Documents list cannot be empty"
+            );
+        }
+        
+        for (Document document : documents) {
+            logger.info("Calling EmbeddingModel for document id = {}", 
+                document.getId());
+            
+            // 嵌入文档
+            float[] embedding = embeddingModel.embed(document);
+            
+            // 存储
+            SimpleVectorStoreContent storeContent = 
+                new SimpleVectorStoreContent(
+                    document.getId(),
+                    document.getText(),
+                    document.getMetadata(),
+                    embedding
+                );
+            
+            store.put(document.getId(), storeContent);
+        }
+    }
+    
+    /**
+     * 删除文档
+     */
+    @Override
+    public void doDelete(List<String> idList) {
+        for (String id : idList) {
+            store.remove(id);
+        }
+    }
+    
+    /**
+     * 相似度搜索
+     */
+    @Override
+    public List<Document> doSimilaritySearch(SearchRequest request) {
+        
+        // 1. 嵌入查询
+        float[] queryEmbedding = embeddingModel.embed(request.getQuery());
+        
+        // 2. 计算所有文档的相似度
+        List<ScoredDocument> scoredDocs = store.values()
+            .stream()
+            .map(content -> {
+                float similarity = cosineSimilarity(
+                    queryEmbedding,
+                    content.embedding()
+                );
+                
+                Document doc = new Document(
+                    content.id(),
+                    content.text(),
+                    content.metadata()
+                );
+                doc.setScore(similarity);
+                
+                return new ScoredDocument(doc, similarity);
+            })
+            .toList();
+        
+        // 3. 应用元数据过滤
+        if (request.hasFilterExpression()) {
+            scoredDocs = filterByMetadata(
+                scoredDocs,
+                request.getFilterExpression()
+            );
+        }
+        
+        // 4. 应用相似度阈值
+        scoredDocs = scoredDocs.stream()
+            .filter(sd -> sd.score() >= request.getSimilarityThreshold())
+            .toList();
+        
+        // 5. 排序并返回Top K
+        return scoredDocs.stream()
+            .sorted((a, b) -> Float.compare(b.score(), a.score()))
+            .limit(request.getTopK())
+            .map(ScoredDocument::document)
+            .toList();
+    }
+    
+    /**
+     * 余弦相似度计算
+     */
+    private float cosineSimilarity(float[] vec1, float[] vec2) {
+        float dot = 0.0f;
+        float norm1 = 0.0f;
+        float norm2 = 0.0f;
+        
+        for (int i = 0; i < vec1.length; i++) {
+            dot += vec1[i] * vec2[i];
+            norm1 += vec1[i] * vec1[i];
+            norm2 += vec2[i] * vec2[i];
+        }
+        
+        return dot / (float) (Math.sqrt(norm1) * Math.sqrt(norm2));
+    }
+    
+    /**
+     * 元数据过滤
+     */
+    private List<ScoredDocument> filterByMetadata(
+            List<ScoredDocument> docs,
+            Filter.Expression filterExpression) {
+        
+        // 转换为SpEL表达式并过滤
+        // ...实现细节
+        
+        return filteredDocs;
+    }
+    
+    /**
+     * 保存到文件
+     */
+    public void save(File file) throws IOException {
+        objectMapper.writeValue(file, store);
+    }
+    
+    /**
+     * 从文件加载
+     */
+    public void load(File file) throws IOException {
+        Map<String, SimpleVectorStoreContent> loadedStore = 
+            objectMapper.readValue(file, 
+                new TypeReference<Map<String, SimpleVectorStoreContent>>() {});
+        
+        store.clear();
+        store.putAll(loadedStore);
+    }
+    
+    record ScoredDocument(Document document, float score) {}
 }
 ```
 
-**使用**:
-
-```yaml
-spring:
-  datasource:
-    url: jdbc:postgresql://localhost:5432/vectordb
-    username: postgres
-    password: password
-  ai:
-    vectorstore:
-      pgvector:
-        initialize-schema: true
-        index-type: HNSW
-        distance-type: COSINE_DISTANCE
-        dimensions: 1536
-```
-
-### 2. Chroma
-
-**特点**:
-- ✅ 专为AI应用设计
-- ✅ 简单易用
-- ✅ 开发友好
-- ✅ 支持Docker部署
-
-**配置**:
+### SimpleVectorStoreContent
 
 ```java
-@Configuration
-public class ChromaConfig {
-    
-    @Bean
-    public VectorStore chromaVectorStore(
-            ChromaApi chromaApi,
-            EmbeddingModel embeddingModel) {
-        
-        return ChromaVectorStore.builder(chromaApi, embeddingModel)
-            .collectionName("my_collection")
-            .initializeSchema(true)
-            .build();
-    }
-    
-    @Bean
-    public ChromaApi chromaApi() {
-        return ChromaApi.create("http://localhost:8000");
-    }
-}
+/**
+ * 简单向量存储内容
+ */
+public record SimpleVectorStoreContent(
+    String id,
+    String text,
+    Map<String, Object> metadata,
+    float[] embedding
+) {}
 ```
 
-### 3. Pinecone
-
-**特点**:
-- ✅ 完全托管的云服务
-- ✅ 性能卓越
-- ✅ 自动扩展
-- ❌ 收费服务
-
-**配置**:
-
-```java
-@Configuration
-public class PineconeConfig {
-    
-    @Bean
-    public VectorStore pineconeVectorStore(
-            PineconeApi pineconeApi,
-            EmbeddingModel embeddingModel) {
-        
-        return PineconeVectorStore.builder(pineconeApi, embeddingModel)
-            .indexName("my-index")
-            .namespace("default")
-            .contentFieldName("text")
-            .build();
-    }
-}
-```
-
-### 4. Redis
-
-**特点**:
-- ✅ 超快的内存数据库
-- ✅ 支持持久化
-- ✅ 丰富的数据结构
-- ✅ 适合实时场景
-
-**配置**:
-
-```java
-@Configuration
-public class RedisVectorConfig {
-    
-    @Bean
-    public VectorStore redisVectorStore(
-            JedisPooled jedis,
-            EmbeddingModel embeddingModel) {
-        
-        return RedisVectorStore.builder(jedis, embeddingModel)
-            .indexName("spring-ai-index")
-            .prefix("embedding:")
-            .vectorAlgorithm(Algorithm.HNSW)
-            .build();
-    }
-}
-```
-
-### 5. MongoDB Atlas
-
-**特点**:
-- ✅ 文档数据库
-- ✅ 托管服务
-- ✅ 全局分布
-- ✅ 丰富的查询能力
-
-**配置**:
-
-```java
-@Configuration
-public class MongoDBAtlasConfig {
-    
-    @Bean
-    public VectorStore mongoDBAtlasVectorStore(
-            MongoTemplate mongoTemplate,
-            EmbeddingModel embeddingModel) {
-        
-        return MongoDBAtlasVectorStore.builder(
-                mongoTemplate, 
-                embeddingModel
-            )
-            .collectionName("vector_store")
-            .pathName("embedding")
-            .indexName("vector_index")
-            .build();
-    }
-}
-```
-
-### 6. SimpleVectorStore（内存）
-
-**特点**:
-- ✅ 无需外部依赖
-- ✅ 开发测试方便
-- ✅ 可持久化到文件
-- ❌ 不适合生产环境
-
-**配置**:
+### 使用示例
 
 ```java
 @Configuration
@@ -1279,34 +775,163 @@ public class SimpleVectorStoreConfig {
     public VectorStore simpleVectorStore(
             EmbeddingModel embeddingModel) {
         
-        SimpleVectorStore vectorStore = 
-            SimpleVectorStore.builder(embeddingModel)
-                .build();
+        return SimpleVectorStore.builder(embeddingModel)
+            .build();
+    }
+}
+
+@Service
+public class SimpleVectorStoreService {
+    
+    private final VectorStore vectorStore;
+    
+    /**
+     * 添加文档
+     */
+    public void addDocuments(List<Document> documents) {
+        vectorStore.add(documents);
+    }
+    
+    /**
+     * 搜索
+     */
+    public List<Document> search(String query) {
+        SearchRequest request = SearchRequest.builder()
+            .query(query)
+            .topK(5)
+            .build();
         
-        // 可选：从文件加载
-        File storeFile = new File("vector-store.json");
-        if (storeFile.exists()) {
-            vectorStore.load(storeFile);
+        return vectorStore.similaritySearch(request);
+    }
+    
+    /**
+     * 持久化
+     */
+    public void saveToFile(String filepath) throws IOException {
+        if (vectorStore instanceof SimpleVectorStore simpleStore) {
+            simpleStore.save(new File(filepath));
         }
-        
-        return vectorStore;
+    }
+    
+    /**
+     * 加载
+     */
+    public void loadFromFile(String filepath) throws IOException {
+        if (vectorStore instanceof SimpleVectorStore simpleStore) {
+            simpleStore.load(new File(filepath));
+        }
     }
 }
 ```
 
-### 向量数据库选择指南
+---
 
-| 数据库 | 适用场景 | 优势 | 劣势 |
-|--------|---------|------|------|
-| **PgVector** | 生产环境、需要ACID | 稳定、SQL生态 | 性能中等 |
-| **Chroma** | 开发、原型、小规模 | 简单、免费 | 功能较少 |
-| **Pinecone** | 高并发、大规模 | 性能好、托管 | 收费较贵 |
-| **Redis** | 实时应用、缓存 | 超快速度 | 内存占用大 |
-| **MongoDB** | 混合查询、文档存储 | 灵活查询 | 成本较高 |
-| **Milvus** | 大规模、高性能 | 专业向量库 | 部署复杂 |
-| **Qdrant** | Rust性能、开源 | 快速、特性丰富 | 社区较小 |
-| **Weaviate** | 知识图谱、多模态 | 功能丰富 | 学习曲线陡 |
-| **SimpleVectorStore** | 开发测试 | 零依赖 | 不可用于生产 |
+## 支持的向量数据库
+
+### 1. PostgreSQL (PgVector)
+
+```java
+@Configuration
+public class PgVectorStoreConfig {
+    
+    @Bean
+    public VectorStore pgVectorStore(
+            JdbcTemplate jdbcTemplate,
+            EmbeddingModel embeddingModel) {
+        
+        return new PgVectorStore(
+            jdbcTemplate,
+            embeddingModel,
+            PgVectorStoreOptions.builder()
+                .tableName("vector_store")
+                .schemaName("public")
+                .indexType(PgIndexType.HNSW)
+                .dimensions(1536)
+                .build()
+        );
+    }
+}
+```
+
+### 2. Chroma
+
+```java
+@Configuration
+public class ChromaVectorStoreConfig {
+    
+    @Bean
+    public VectorStore chromaVectorStore(
+            ChromaApi chromaApi,
+            EmbeddingModel embeddingModel) {
+        
+        return new ChromaVectorStore(
+            embeddingModel,
+            chromaApi,
+            "spring_ai_collection",
+            true // 初始化schema
+        );
+    }
+}
+```
+
+### 3. Pinecone
+
+```java
+@Configuration
+public class PineconeVectorStoreConfig {
+    
+    @Bean
+    public VectorStore pineconeVectorStore(
+            PineconeApi pineconeApi,
+            EmbeddingModel embeddingModel) {
+        
+        return new PineconeVectorStore(
+            pineconeApi,
+            embeddingModel,
+            PineconeVectorStoreOptions.builder()
+                .namespace("default")
+                .indexName("spring-ai-index")
+                .build()
+        );
+    }
+}
+```
+
+### 4. Redis
+
+```java
+@Configuration
+public class RedisVectorStoreConfig {
+    
+    @Bean
+    public VectorStore redisVectorStore(
+            RedisVectorStoreConfig config,
+            EmbeddingModel embeddingModel) {
+        
+        return new RedisVectorStore(
+            config,
+            embeddingModel,
+            RedisVectorStoreOptions.builder()
+                .indexName("spring-ai-index")
+                .prefix("doc:")
+                .build()
+        );
+    }
+}
+```
+
+### 向量数据库对比
+
+| 数据库 | 类型 | 优势 | 适用场景 |
+|--------|------|------|----------|
+| **PgVector** | 扩展 | PostgreSQL生态，SQL查询 | 已有PG的项目 |
+| **Chroma** | 专用 | 开源，易用，内嵌模式 | 原型开发 |
+| **Pinecone** | 云服务 | 托管服务，高性能 | 生产环境 |
+| **Milvus** | 专用 | 开源，高性能，大规模 | 企业级应用 |
+| **Qdrant** | 专用 | 高性能，Rust实现 | 高并发场景 |
+| **Redis** | 缓存+ | 内存速度，Redis生态 | 实时检索 |
+| **Weaviate** | 专用 | GraphQL，多租户 | 复杂查询 |
+| **MongoDB Atlas** | 文档+ | MongoDB生态 | 已有Mongo的项目 |
 
 ---
 
@@ -1315,117 +940,88 @@ public class SimpleVectorStoreConfig {
 ### 1. 添加依赖
 
 ```xml
-<!-- 核心依赖 -->
+<!-- Simple Vector Store (开发/测试) -->
 <dependency>
     <groupId>org.springframework.ai</groupId>
     <artifactId>spring-ai-vector-store</artifactId>
 </dependency>
 
-<!-- 选择向量数据库（以PgVector为例） -->
+<!-- PgVector (PostgreSQL) -->
 <dependency>
     <groupId>org.springframework.ai</groupId>
-    <artifactId>spring-ai-pgvector-store</artifactId>
+    <artifactId>spring-ai-pgvector-store-spring-boot-starter</artifactId>
 </dependency>
 
-<!-- Embedding模型（以OpenAI为例） -->
+<!-- Chroma -->
 <dependency>
     <groupId>org.springframework.ai</groupId>
-    <artifactId>spring-ai-openai-spring-boot-starter</artifactId>
+    <artifactId>spring-ai-chroma-store-spring-boot-starter</artifactId>
+</dependency>
+
+<!-- Redis -->
+<dependency>
+    <groupId>org.springframework.ai</groupId>
+    <artifactId>spring-ai-redis-store-spring-boot-starter</artifactId>
 </dependency>
 ```
 
-### 2. 配置向量数据库
+### 2. 配置
 
-```java
-@Configuration
-public class VectorStoreConfig {
-    
-    @Bean
-    public VectorStore vectorStore(
-            JdbcTemplate jdbcTemplate,
-            EmbeddingModel embeddingModel) {
-        
-        return PgVectorStore.builder(jdbcTemplate, embeddingModel)
-            .schemaName("public")
-            .vectorTableName("vector_store")
-            .dimensions(1536)
-            .distanceType(PgDistanceType.COSINE_DISTANCE)
-            .indexType(PgIndexType.HNSW)
-            .initializeSchema(true)
-            .build();
-    }
-}
+```yaml
+spring:
+  ai:
+    vectorstore:
+      pgvector:
+        url: jdbc:postgresql://localhost:5432/vectordb
+        username: postgres
+        password: postgres
+        table-name: vector_store
+        dimensions: 1536
+        index-type: HNSW
+      
+      chroma:
+        url: http://localhost:8000
+        collection-name: spring_ai_collection
+      
+      redis:
+        url: redis://localhost:6379
+        index-name: spring-ai-index
+        prefix: "doc:"
 ```
 
-### 3. 导入文档
+### 3. 基本使用
 
 ```java
 @Service
-public class DocumentIngestionService {
+public class VectorStoreService {
     
     private final VectorStore vectorStore;
-    private final DocumentReader documentReader;
+    private final EmbeddingModel embeddingModel;
     
     /**
-     * 导入单个文档
+     * 添加单个文档
      */
-    public void ingestDocument(String text, Map<String, Object> metadata) {
-        Document document = new Document(text, metadata);
-        vectorStore.add(List.of(document));
+    public void addDocument(String text, Map<String, Object> metadata) {
+        Document doc = new Document(text, metadata);
+        vectorStore.add(List.of(doc));
     }
     
     /**
-     * 导入多个文档
+     * 批量添加文档
      */
-    public void ingestDocuments(List<Document> documents) {
+    public void addDocuments(List<String> texts) {
+        List<Document> documents = texts.stream()
+            .map(text -> new Document(
+                text,
+                Map.of("source", "import")
+            ))
+            .toList();
+        
         vectorStore.add(documents);
     }
     
     /**
-     * 从文件导入
-     */
-    public void ingestFromFile(Resource resource) {
-        // 读取文档
-        List<Document> documents = documentReader.read(resource);
-        
-        // 添加元数据
-        documents.forEach(doc -> 
-            doc.getMetadata().put("source", resource.getFilename())
-        );
-        
-        // 导入向量库
-        vectorStore.add(documents);
-    }
-    
-    /**
-     * 批量导入（大文件）
-     */
-    public void batchIngest(List<Document> documents, int batchSize) {
-        for (int i = 0; i < documents.size(); i += batchSize) {
-            int end = Math.min(i + batchSize, documents.size());
-            List<Document> batch = documents.subList(i, end);
-            
-            vectorStore.add(batch);
-            
-            logger.info("Ingested batch {}/{}", 
-                (i / batchSize) + 1,
-                (documents.size() + batchSize - 1) / batchSize
-            );
-        }
-    }
-}
-```
-
-### 4. 搜索文档
-
-```java
-@Service
-public class DocumentSearchService {
-    
-    private final VectorStore vectorStore;
-    
-    /**
-     * 基本搜索
+     * 简单搜索
      */
     public List<Document> search(String query) {
         return vectorStore.similaritySearch(query);
@@ -1438,105 +1034,159 @@ public class DocumentSearchService {
             String query,
             int topK,
             double threshold,
-            String filter) {
+            String filterExpr) {
         
         SearchRequest request = SearchRequest.builder()
             .query(query)
             .topK(topK)
             .similarityThreshold(threshold)
-            .filterExpression(filter)
+            .filterExpression(filterExpr)
             .build();
         
         return vectorStore.similaritySearch(request);
     }
     
     /**
-     * 搜索并格式化结果
+     * 删除文档
      */
-    public List<SearchResult> searchWithScore(String query) {
-        List<Document> documents = vectorStore.similaritySearch(
-            SearchRequest.builder()
-                .query(query)
-                .topK(5)
-                .build()
-        );
-        
-        return documents.stream()
-            .map(doc -> new SearchResult(
-                doc.getId(),
-                doc.getText(),
-                doc.getMetadata(),
-                // 相似度分数通常存在元数据中
-                (Double) doc.getMetadata().get("distance")
-            ))
-            .toList();
-    }
-    
-    record SearchResult(
-        String id,
-        String text,
-        Map<String, Object> metadata,
-        Double similarity
-    ) {}
-}
-```
-
-### 5. 更新和删除
-
-```java
-@Service
-public class DocumentManagementService {
-    
-    private final VectorStore vectorStore;
-    
-    /**
-     * 更新文档（先删除再添加）
-     */
-    public void updateDocument(Document document) {
-        // 删除旧文档
-        vectorStore.delete(List.of(document.getId()));
-        
-        // 添加新文档
-        vectorStore.add(List.of(document));
-    }
-    
-    /**
-     * 批量更新
-     */
-    public void updateDocuments(List<Document> documents) {
-        // 提取ID
-        List<String> ids = documents.stream()
-            .map(Document::getId)
-            .toList();
-        
-        // 删除
-        vectorStore.delete(ids);
-        
-        // 重新添加
-        vectorStore.add(documents);
-    }
-    
-    /**
-     * 按ID删除
-     */
-    public void deleteById(String id) {
+    public void deleteDocument(String id) {
         vectorStore.delete(List.of(id));
     }
     
     /**
-     * 按过滤条件删除
+     * 批量删除
      */
-    public void deleteByFilter(String filterExpression) {
-        vectorStore.delete(filterExpression);
+    public void deleteByFilter(String filterExpr) {
+        vectorStore.delete(filterExpr);
+    }
+}
+```
+
+### 4. REST API示例
+
+```java
+@RestController
+@RequestMapping("/api/vectorstore")
+public class VectorStoreController {
+    
+    private final VectorStore vectorStore;
+    
+    /**
+     * 添加文档
+     */
+    @PostMapping("/documents")
+    public ResponseEntity<AddResult> addDocuments(
+            @RequestBody AddRequest request) {
+        
+        try {
+            List<Document> documents = request.texts().stream()
+                .map(text -> new Document(
+                    text,
+                    request.metadata()
+                ))
+                .toList();
+            
+            vectorStore.add(documents);
+            
+            return ResponseEntity.ok(
+                new AddResult(documents.size(), "success")
+            );
+            
+        } catch (Exception e) {
+            return ResponseEntity.status(500)
+                .body(new AddResult(0, "Error: " + e.getMessage()));
+        }
     }
     
     /**
-     * 清空所有文档（危险操作）
+     * 搜索文档
      */
-    public void deleteAll() {
-        // 根据具体实现可能需要不同的方法
-        // 某些向量库支持删除整个集合
+    @PostMapping("/search")
+    public ResponseEntity<SearchResult> search(
+            @RequestBody SearchRequestDto request) {
+        
+        try {
+            SearchRequest searchRequest = SearchRequest.builder()
+                .query(request.query())
+                .topK(request.topK())
+                .similarityThreshold(request.threshold())
+                .filterExpression(request.filter())
+                .build();
+            
+            List<Document> documents = 
+                vectorStore.similaritySearch(searchRequest);
+            
+            List<DocumentDto> results = documents.stream()
+                .map(doc -> new DocumentDto(
+                    doc.getId(),
+                    doc.getText(),
+                    doc.getMetadata(),
+                    doc.getScore()
+                ))
+                .toList();
+            
+            return ResponseEntity.ok(
+                new SearchResult(results, "success")
+            );
+            
+        } catch (Exception e) {
+            return ResponseEntity.status(500)
+                .body(new SearchResult(
+                    List.of(),
+                    "Error: " + e.getMessage()
+                ));
+        }
     }
+    
+    /**
+     * 删除文档
+     */
+    @DeleteMapping("/documents/{id}")
+    public ResponseEntity<DeleteResult> deleteDocument(
+            @PathVariable String id) {
+        
+        try {
+            vectorStore.delete(List.of(id));
+            return ResponseEntity.ok(
+                new DeleteResult(1, "success")
+            );
+            
+        } catch (Exception e) {
+            return ResponseEntity.status(500)
+                .body(new DeleteResult(
+                    0,
+                    "Error: " + e.getMessage()
+                ));
+        }
+    }
+    
+    record AddRequest(
+        List<String> texts,
+        Map<String, Object> metadata
+    ) {}
+    
+    record AddResult(int count, String status) {}
+    
+    record SearchRequestDto(
+        String query,
+        int topK,
+        double threshold,
+        String filter
+    ) {}
+    
+    record DocumentDto(
+        String id,
+        String text,
+        Map<String, Object> metadata,
+        Double score
+    ) {}
+    
+    record SearchResult(
+        List<DocumentDto> documents,
+        String status
+    ) {}
+    
+    record DeleteResult(int count, String status) {}
 }
 ```
 
@@ -1544,156 +1194,453 @@ public class DocumentManagementService {
 
 ## 高级特性
 
-### 1. 批处理策略
-
-```java
-/**
- * 批处理策略
- * 用于优化大量文档的embedding生成
- */
-@Configuration
-public class BatchingConfig {
-    
-    @Bean
-    public VectorStore vectorStore(
-            JdbcTemplate jdbcTemplate,
-            EmbeddingModel embeddingModel) {
-        
-        return PgVectorStore.builder(jdbcTemplate, embeddingModel)
-            .batchingStrategy(new TokenCountBatchingStrategy())
-            // 或者
-            // .batchingStrategy(new MaxBatchSizeBatchingStrategy(100))
-            .build();
-    }
-}
-
-// 自定义批处理策略
-public class CustomBatchingStrategy implements BatchingStrategy {
-    
-    @Override
-    public List<List<Document>> batch(List<Document> documents) {
-        // 自定义批处理逻辑
-        // 例如：按文档大小、元数据类型等分组
-        return groupBy SomeLogic(documents);
-    }
-}
-```
-
-### 2. 可观测性（Observation）
-
-```java
-@Configuration
-public class ObservableVectorStoreConfig {
-    
-    @Bean
-    public VectorStore vectorStore(
-            JdbcTemplate jdbcTemplate,
-            EmbeddingModel embeddingModel,
-            ObservationRegistry observationRegistry) {
-        
-        return PgVectorStore.builder(jdbcTemplate, embeddingModel)
-            .observationRegistry(observationRegistry)
-            .customObservationConvention(
-                new CustomVectorStoreObservationConvention()
-            )
-            .build();
-    }
-}
-
-// 监控指标
-// - vectorstore.query.duration: 查询耗时
-// - vectorstore.query.documents: 返回文档数
-// - vectorstore.add.duration: 添加耗时
-// - vectorstore.add.documents: 添加文档数
-```
-
-### 3. 多租户支持
+### 1. 批量导入优化
 
 ```java
 @Service
-public class MultiTenantVectorStore {
+public class BatchImportService {
     
     private final VectorStore vectorStore;
     
     /**
-     * 添加文档（自动添加租户ID）
+     * 大批量导入（分批处理）
      */
-    public void addDocument(String tenantId, Document document) {
-        document.getMetadata().put("tenantId", tenantId);
-        vectorStore.add(List.of(document));
+    public void importLargeDataset(List<String> texts) {
+        int batchSize = 100;
+        
+        for (int i = 0; i < texts.size(); i += batchSize) {
+            int end = Math.min(i + batchSize, texts.size());
+            List<String> batch = texts.subList(i, end);
+            
+            List<Document> documents = batch.stream()
+                .map(text -> new Document(
+                    text,
+                    Map.of(
+                        "batch", i / batchSize,
+                        "imported_at", LocalDateTime.now().toString()
+                    )
+                ))
+                .toList();
+            
+            vectorStore.add(documents);
+            
+            logger.info("Imported batch {}/{}", 
+                i / batchSize + 1,
+                (texts.size() + batchSize - 1) / batchSize
+            );
+        }
     }
+}
+```
+
+### 2. 异步导入
+
+```java
+@Service
+public class AsyncImportService {
+    
+    private final VectorStore vectorStore;
     
     /**
-     * 搜索（自动过滤租户）
+     * 异步批量导入
      */
-    public List<Document> search(String tenantId, String query) {
-        String filter = "tenantId == '" + tenantId + "'";
+    @Async
+    public CompletableFuture<ImportResult> importAsync(
+            List<String> texts) {
         
-        return vectorStore.similaritySearch(
-            SearchRequest.builder()
-                .query(query)
-                .filterExpression(filter)
-                .build()
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                List<Document> documents = texts.stream()
+                    .map(text -> new Document(text, Map.of()))
+                    .toList();
+                
+                vectorStore.add(documents);
+                
+                return new ImportResult(documents.size(), "success");
+                
+            } catch (Exception e) {
+                logger.error("Async import failed", e);
+                return new ImportResult(0, "failed: " + e.getMessage());
+            }
+        });
+    }
+    
+    record ImportResult(int count, String status) {}
+}
+```
+
+### 3. 元数据丰富化
+
+```java
+@Service
+public class MetadataEnrichmentService {
+    
+    private final VectorStore vectorStore;
+    private final ChatClient chatClient;
+    
+    /**
+     * 自动生成元数据
+     */
+    public void addDocumentWithEnrichedMetadata(String text) {
+        
+        // 使用AI生成元数据
+        String metadataJson = chatClient
+            .prompt("""
+                分析以下文本，生成JSON格式的元数据：
+                - category: 文本类别
+                - tags: 关键词标签（数组）
+                - summary: 简短摘要
+                
+                文本：
+                {text}
+                """)
+            .param("text", text)
+            .call()
+            .content();
+        
+        // 解析JSON
+        Map<String, Object> metadata = parseMetadata(metadataJson);
+        metadata.put("created_at", LocalDateTime.now().toString());
+        metadata.put("source", "enriched");
+        
+        // 添加文档
+        Document doc = new Document(text, metadata);
+        vectorStore.add(List.of(doc));
+    }
+    
+    private Map<String, Object> parseMetadata(String json) {
+        // JSON解析逻辑
+        return Map.of(); // 简化
+    }
+}
+```
+
+### 4. 增量更新
+
+```java
+@Service
+public class IncrementalUpdateService {
+    
+    private final VectorStore vectorStore;
+    
+    /**
+     * 更新文档（删除+重新添加）
+     */
+    public void updateDocument(String id, String newText) {
+        
+        // 1. 删除旧文档
+        vectorStore.delete(List.of(id));
+        
+        // 2. 添加新文档
+        Document newDoc = new Document(
+            id,
+            newText,
+            Map.of("updated_at", LocalDateTime.now().toString())
         );
+        
+        vectorStore.add(List.of(newDoc));
     }
     
     /**
-     * 删除租户所有数据
+     * 批量更新
      */
-    public void deleteTenant(String tenantId) {
-        String filter = "tenantId == '" + tenantId + "'";
-        vectorStore.delete(filter);
+    public void updateDocuments(Map<String, String> updates) {
+        
+        // 1. 删除所有旧文档
+        vectorStore.delete(new ArrayList<>(updates.keySet()));
+        
+        // 2. 添加所有新文档
+        List<Document> newDocs = updates.entrySet()
+            .stream()
+            .map(entry -> new Document(
+                entry.getKey(),
+                entry.getValue(),
+                Map.of("updated_at", LocalDateTime.now().toString())
+            ))
+            .toList();
+        
+        vectorStore.add(newDocs);
     }
 }
 ```
 
-### 4. 混合搜索（向量+关键词）
+---
+
+## 实战场景
+
+### 1. 知识库问答系统
 
 ```java
 @Service
-public class HybridSearchService {
+public class KnowledgeBaseService {
     
     private final VectorStore vectorStore;
+    private final ChatClient chatClient;
     
     /**
-     * 混合搜索：向量相似度 + 关键词匹配
+     * 导入知识库文档
      */
-    public List<Document> hybridSearch(
+    public void importKnowledgeBase(List<KBDocument> kbDocs) {
+        
+        List<Document> documents = kbDocs.stream()
+            .map(kbDoc -> new Document(
+                kbDoc.content(),
+                Map.of(
+                    "title", kbDoc.title(),
+                    "category", kbDoc.category(),
+                    "author", kbDoc.author(),
+                    "date", kbDoc.date().toString(),
+                    "tags", kbDoc.tags()
+                )
+            ))
+            .toList();
+        
+        vectorStore.add(documents);
+    }
+    
+    /**
+     * 问答
+     */
+    public String ask(String question) {
+        
+        // 1. 检索相关文档
+        SearchRequest searchRequest = SearchRequest.builder()
+            .query(question)
+            .topK(3)
+            .similarityThreshold(0.7)
+            .build();
+        
+        List<Document> relevantDocs = 
+            vectorStore.similaritySearch(searchRequest);
+        
+        if (relevantDocs.isEmpty()) {
+            return "抱歉，我在知识库中没有找到相关信息。";
+        }
+        
+        // 2. 构建上下文
+        String context = relevantDocs.stream()
+            .map(doc -> "【文档】" + doc.getText())
+            .collect(Collectors.joining("\n\n"));
+        
+        // 3. 生成答案
+        return chatClient
+            .prompt("""
+                基于以下知识库文档回答问题：
+                
+                问题：{question}
+                
+                知识库：
+                {context}
+                
+                请基于知识库内容回答，如果知识库中没有相关信息，请明确说明。
+                """)
+            .param("question", question)
+            .param("context", context)
+            .call()
+            .content();
+    }
+    
+    /**
+     * 按分类检索
+     */
+    public List<Document> searchByCategory(
             String query,
-            List<String> keywords) {
+            String category) {
         
-        // 1. 向量搜索
-        List<Document> vectorResults = vectorStore.similaritySearch(
-            SearchRequest.builder()
-                .query(query)
-                .topK(20)  // 多返回一些
-                .similarityThreshold(0.6)
-                .build()
+        SearchRequest request = SearchRequest.builder()
+            .query(query)
+            .topK(10)
+            .filterExpression("category == '" + category + "'")
+            .build();
+        
+        return vectorStore.similaritySearch(request);
+    }
+    
+    record KBDocument(
+        String title,
+        String content,
+        String category,
+        String author,
+        LocalDate date,
+        List<String> tags
+    ) {}
+}
+```
+
+### 2. 文档去重系统
+
+```java
+@Service
+public class DocumentDeduplicationService {
+    
+    private final VectorStore vectorStore;
+    
+    /**
+     * 检查文档是否重复
+     */
+    public DuplicationCheckResult checkDuplication(
+            String text,
+            double threshold) {
+        
+        // 搜索相似文档
+        SearchRequest request = SearchRequest.builder()
+            .query(text)
+            .topK(5)
+            .similarityThreshold(threshold)
+            .build();
+        
+        List<Document> similarDocs = 
+            vectorStore.similaritySearch(request);
+        
+        if (similarDocs.isEmpty()) {
+            return new DuplicationCheckResult(
+                false,
+                null,
+                "No duplicate found"
+            );
+        }
+        
+        Document mostSimilar = similarDocs.get(0);
+        
+        return new DuplicationCheckResult(
+            true,
+            mostSimilar.getId(),
+            "Similarity: " + mostSimilar.getScore()
         );
+    }
+    
+    /**
+     * 添加文档（带去重）
+     */
+    public AddResult addDocumentWithDeduplication(
+            String text,
+            Map<String, Object> metadata,
+            double threshold) {
         
-        // 2. 关键词过滤
-        return vectorResults.stream()
-            .filter(doc -> {
-                String text = doc.getText().toLowerCase();
-                return keywords.stream()
-                    .anyMatch(keyword -> 
-                        text.contains(keyword.toLowerCase())
-                    );
-            })
-            .limit(5)  // 最终返回5个
+        // 检查重复
+        DuplicationCheckResult dupCheck = 
+            checkDuplication(text, threshold);
+        
+        if (dupCheck.isDuplicate()) {
+            return new AddResult(
+                false,
+                null,
+                "Duplicate of document: " + dupCheck.duplicateId()
+            );
+        }
+        
+        // 添加文档
+        Document doc = new Document(text, metadata);
+        vectorStore.add(List.of(doc));
+        
+        return new AddResult(
+            true,
+            doc.getId(),
+            "Document added successfully"
+        );
+    }
+    
+    record DuplicationCheckResult(
+        boolean isDuplicate,
+        String duplicateId,
+        String message
+    ) {}
+    
+    record AddResult(
+        boolean success,
+        String documentId,
+        String message
+    ) {}
+}
+```
+
+### 3. 智能文档推荐
+
+```java
+@Service
+public class DocumentRecommendationService {
+    
+    private final VectorStore vectorStore;
+    
+    /**
+     * 基于文档推荐相似文档
+     */
+    public List<Document> recommendSimilarDocuments(
+            String documentId,
+            int count) {
+        
+        // 1. 获取文档内容
+        // 注意：实际实现可能需要单独的方法获取文档
+        // 这里假设我们有文档文本
+        String documentText = getDocumentText(documentId);
+        
+        // 2. 搜索相似文档
+        SearchRequest request = SearchRequest.builder()
+            .query(documentText)
+            .topK(count + 1)  // +1因为会包含自己
+            .build();
+        
+        List<Document> similar = 
+            vectorStore.similaritySearch(request);
+        
+        // 3. 过滤掉自己
+        return similar.stream()
+            .filter(doc -> !doc.getId().equals(documentId))
+            .limit(count)
             .toList();
     }
     
     /**
-     * 重排序（Reranking）
+     * 基于用户历史推荐
      */
-    public List<Document> rerankResults(
-            String query,
-            List<Document> documents) {
+    public List<Document> recommendByUserHistory(
+            String userId,
+            int count) {
         
-        // 使用更精确的模型重新排序
-        // 例如：CrossEncoder模型
-        return documents; // 简化示例
+        // 1. 获取用户阅读历史
+        List<String> history = getUserHistory(userId);
+        
+        // 2. 基于历史推荐
+        // 为每个历史文档找相似的，然后合并去重
+        Set<String> recommended = new HashSet<>();
+        List<Document> results = new ArrayList<>();
+        
+        for (String historicalDocId : history) {
+            String docText = getDocumentText(historicalDocId);
+            
+            SearchRequest request = SearchRequest.builder()
+                .query(docText)
+                .topK(5)
+                .build();
+            
+            List<Document> similar = 
+                vectorStore.similaritySearch(request);
+            
+            for (Document doc : similar) {
+                if (!recommended.contains(doc.getId()) &&
+                    !history.contains(doc.getId())) {
+                    
+                    recommended.add(doc.getId());
+                    results.add(doc);
+                    
+                    if (results.size() >= count) {
+                        return results;
+                    }
+                }
+            }
+        }
+        
+        return results;
+    }
+    
+    private String getDocumentText(String documentId) {
+        // 实现获取文档文本的逻辑
+        return "";
+    }
+    
+    private List<String> getUserHistory(String userId) {
+        // 实现获取用户历史的逻辑
+        return List.of();
     }
 }
 ```
@@ -1702,168 +1649,46 @@ public class HybridSearchService {
 
 ## 最佳实践
 
-### 1. 文档分块策略
+### 1. 向量数据库选择
 
 ```java
-@Service
-public class DocumentChunkingService {
+@Configuration
+public class VectorStoreSelectionConfig {
     
     /**
-     * 按字符数分块
+     * 开发环境：SimpleVectorStore
      */
-    public List<Document> chunkByCharacters(
-            String text,
-            int chunkSize,
-            int chunkOverlap) {
-        
-        List<Document> chunks = new ArrayList<>();
-        int start = 0;
-        int docId = 1;
-        
-        while (start < text.length()) {
-            int end = Math.min(start + chunkSize, text.length());
-            String chunk = text.substring(start, end);
-            
-            Document doc = Document.builder()
-                .text(chunk)
-                .metadata("chunkId", docId++)
-                .metadata("chunkStart", start)
-                .metadata("chunkEnd", end)
-                .build();
-            
-            chunks.add(doc);
-            
-            start += chunkSize - chunkOverlap;
-        }
-        
-        return chunks;
+    @Bean
+    @Profile("dev")
+    public VectorStore devVectorStore(EmbeddingModel embeddingModel) {
+        return SimpleVectorStore.builder(embeddingModel).build();
     }
     
     /**
-     * 按段落分块
+     * 测试环境：Chroma（轻量级）
      */
-    public List<Document> chunkByParagraphs(String text) {
-        String[] paragraphs = text.split("\n\n+");
-        
-        return Arrays.stream(paragraphs)
-            .filter(p -> !p.trim().isEmpty())
-            .map(p -> new Document(p.trim()))
-            .toList();
+    @Bean
+    @Profile("test")
+    public VectorStore testVectorStore(
+            ChromaApi chromaApi,
+            EmbeddingModel embeddingModel) {
+        return new ChromaVectorStore(embeddingModel, chromaApi);
     }
     
     /**
-     * 智能分块（保持语义完整）
+     * 生产环境：PgVector（企业级）
      */
-    public List<Document> semanticChunking(String text) {
-        // 使用NLP技术分句
-        // 保持句子完整性
-        // 控制块大小在合理范围
-        return List.of(); // 简化示例
+    @Bean
+    @Profile("prod")
+    public VectorStore prodVectorStore(
+            JdbcTemplate jdbcTemplate,
+            EmbeddingModel embeddingModel) {
+        return new PgVectorStore(jdbcTemplate, embeddingModel);
     }
 }
 ```
 
-### 2. 元数据设计
-
-```java
-/**
- * 元数据最佳实践
- */
-public class MetadataDesign {
-    
-    public Document createWellStructuredDocument(String content) {
-        return Document.builder()
-            .text(content)
-            
-            // 1. 来源追踪
-            .metadata("source", "user_manual.pdf")
-            .metadata("sourceType", "PDF")
-            .metadata("page", 42)
-            .metadata("section", "5.2")
-            
-            // 2. 时间信息
-            .metadata("createdAt", Instant.now().toString())
-            .metadata("updatedAt", Instant.now().toString())
-            .metadata("publishedYear", 2024)
-            
-            // 3. 分类标签
-            .metadata("category", "技术文档")
-            .metadata("subcategory", "API参考")
-            .metadata("tags", List.of("REST", "JSON", "API"))
-            
-            // 4. 访问控制
-            .metadata("tenantId", "company-001")
-            .metadata("department", "Engineering")
-            .metadata("accessLevel", "internal")
-            .metadata("owner", "user@example.com")
-            
-            // 5. 内容特征
-            .metadata("language", "zh-CN")
-            .metadata("wordCount", 250)
-            .metadata("complexity", "intermediate")
-            .metadata("version", "2.1")
-            
-            // 6. 业务相关
-            .metadata("productId", "prod-123")
-            .metadata("customerId", "cust-456")
-            .metadata("priority", "high")
-            
-            .build();
-    }
-}
-```
-
-### 3. 性能优化
-
-```java
-@Service
-public class VectorStoreOptimization {
-    
-    private final VectorStore vectorStore;
-    private final EmbeddingModel embeddingModel;
-    
-    /**
-     * 批量操作优化
-     */
-    public void efficientBatchAdd(List<Document> documents) {
-        // 1. 批量生成embedding
-        List<float[]> embeddings = embeddingModel.embed(
-            documents.stream()
-                .map(Document::getText)
-                .toList()
-        );
-        
-        // 2. 设置embedding
-        for (int i = 0; i < documents.size(); i++) {
-            documents.get(i).setEmbedding(embeddings.get(i));
-        }
-        
-        // 3. 批量添加
-        vectorStore.add(documents);
-    }
-    
-    /**
-     * 缓存搜索结果
-     */
-    @Cacheable(value = "vectorSearchCache", key = "#query")
-    public List<Document> cachedSearch(String query) {
-        return vectorStore.similaritySearch(query);
-    }
-    
-    /**
-     * 异步导入
-     */
-    @Async
-    public CompletableFuture<Void> asyncIngest(
-            List<Document> documents) {
-        
-        vectorStore.add(documents);
-        return CompletableFuture.completedFuture(null);
-    }
-}
-```
-
-### 4. 错误处理
+### 2. 错误处理
 
 ```java
 @Service
@@ -1881,7 +1706,7 @@ public class RobustVectorStoreService {
                 vectorStore.add(documents);
                 return null;
             } catch (Exception e) {
-                logger.error("Failed to add documents, attempt: {}", 
+                logger.error("Add failed, attempt: {}", 
                     context.getRetryCount(), e);
                 throw e;
             }
@@ -1889,299 +1714,58 @@ public class RobustVectorStoreService {
     }
     
     /**
-     * 容错搜索
+     * 带降级的搜索
      */
-    public List<Document> robustSearch(String query) {
+    public List<Document> searchWithFallback(String query) {
         try {
             return vectorStore.similaritySearch(query);
         } catch (Exception e) {
-            logger.error("Search failed", e);
-            // 返回空结果或降级结果
+            logger.error("Search failed, returning empty list", e);
             return List.of();
         }
     }
-    
-    /**
-     * 部分失败处理
-     */
-    public void resilientBatchAdd(List<Document> documents) {
-        List<Document> failed = new ArrayList<>();
-        
-        for (Document doc : documents) {
-            try {
-                vectorStore.add(List.of(doc));
-            } catch (Exception e) {
-                logger.error("Failed to add document: {}", 
-                    doc.getId(), e);
-                failed.add(doc);
-            }
-        }
-        
-        if (!failed.isEmpty()) {
-            logger.warn("Failed to add {} documents", failed.size());
-            // 重试或保存到DLQ
-        }
-    }
 }
 ```
 
----
-
-## 实战示例
-
-### 1. 文档问答系统
+### 3. 性能监控
 
 ```java
 @Service
-public class DocumentQASystem {
+public class MonitoredVectorStoreService {
     
     private final VectorStore vectorStore;
-    private final DocumentReader pdfReader;
-    private final TextSplitter textSplitter;
+    private final MeterRegistry meterRegistry;
     
     /**
-     * 导入知识库
+     * 带监控的搜索
      */
-    public void ingestKnowledgeBase(List<Resource> pdfs) {
-        for (Resource pdf : pdfs) {
-            // 1. 读取PDF
-            List<Document> documents = pdfReader.read(pdf);
+    public List<Document> searchWithMetrics(String query) {
+        
+        Timer.Sample sample = Timer.start(meterRegistry);
+        
+        try {
+            List<Document> results = vectorStore.similaritySearch(query);
             
-            // 2. 分块
-            List<Document> chunks = documents.stream()
-                .flatMap(doc -> textSplitter.split(doc).stream())
-                .toList();
+            // 记录成功
+            sample.stop(Timer.builder("vectorstore.search")
+                .tag("status", "success")
+                .register(meterRegistry));
             
-            // 3. 添加元数据
-            chunks.forEach(chunk -> 
-                chunk.getMetadata().put("source", pdf.getFilename())
-            );
+            // 记录结果数量
+            meterRegistry.counter("vectorstore.search.results")
+                .increment(results.size());
             
-            // 4. 导入向量库
-            vectorStore.add(chunks);
+            return results;
             
-            logger.info("Ingested: {}", pdf.getFilename());
+        } catch (Exception e) {
+            // 记录失败
+            sample.stop(Timer.builder("vectorstore.search")
+                .tag("status", "failure")
+                .register(meterRegistry));
+            
+            throw e;
         }
     }
-    
-    /**
-     * 回答问题
-     */
-    public Answer answerQuestion(String question) {
-        // 1. 检索相关文档
-        List<Document> relevantDocs = vectorStore.similaritySearch(
-            SearchRequest.builder()
-                .query(question)
-                .topK(5)
-                .similarityThreshold(0.7)
-                .build()
-        );
-        
-        if (relevantDocs.isEmpty()) {
-            return new Answer(
-                "抱歉，我在知识库中没有找到相关信息。",
-                List.of()
-            );
-        }
-        
-        // 2. 构建上下文
-        String context = relevantDocs.stream()
-            .map(Document::getText)
-            .collect(Collectors.joining("\n\n"));
-        
-        // 3. 生成答案（使用ChatClient，见RAG文档）
-        String answer = generateAnswer(question, context);
-        
-        // 4. 提取来源
-        List<String> sources = relevantDocs.stream()
-            .map(doc -> (String) doc.getMetadata().get("source"))
-            .distinct()
-            .toList();
-        
-        return new Answer(answer, sources);
-    }
-    
-    private String generateAnswer(String question, String context) {
-        // 使用ChatClient生成答案
-        // 见RAG文档
-        return "";
-    }
-    
-    record Answer(String text, List<String> sources) {}
-}
-```
-
-### 2. 语义搜索引擎
-
-```java
-@Service
-public class SemanticSearchEngine {
-    
-    private final VectorStore vectorStore;
-    
-    /**
-     * 导入产品目录
-     */
-    public void indexProducts(List<Product> products) {
-        List<Document> documents = products.stream()
-            .map(product -> Document.builder()
-                .id(product.id())
-                .text(product.name() + " " + product.description())
-                .metadata("productId", product.id())
-                .metadata("name", product.name())
-                .metadata("category", product.category())
-                .metadata("price", product.price())
-                .metadata("inStock", product.inStock())
-                .build()
-            )
-            .toList();
-        
-        vectorStore.add(documents);
-    }
-    
-    /**
-     * 语义搜索产品
-     */
-    public List<ProductResult> searchProducts(
-            String query,
-            String category,
-            Double maxPrice,
-            Boolean inStock) {
-        
-        // 构建过滤表达式
-        List<String> filters = new ArrayList<>();
-        
-        if (category != null) {
-            filters.add("category == '" + category + "'");
-        }
-        
-        if (maxPrice != null) {
-            filters.add("price <= " + maxPrice);
-        }
-        
-        if (inStock != null) {
-            filters.add("inStock == " + inStock);
-        }
-        
-        String filterExpression = filters.isEmpty() ? 
-            null : String.join(" && ", filters);
-        
-        // 执行搜索
-        List<Document> docs = vectorStore.similaritySearch(
-            SearchRequest.builder()
-                .query(query)
-                .topK(10)
-                .similarityThreshold(0.6)
-                .filterExpression(filterExpression)
-                .build()
-        );
-        
-        // 转换结果
-        return docs.stream()
-            .map(doc -> new ProductResult(
-                (String) doc.getMetadata().get("productId"),
-                (String) doc.getMetadata().get("name"),
-                doc.getText(),
-                (Double) doc.getMetadata().get("price")
-            ))
-            .toList();
-    }
-    
-    record Product(
-        String id,
-        String name,
-        String description,
-        String category,
-        Double price,
-        Boolean inStock
-    ) {}
-    
-    record ProductResult(
-        String id,
-        String name,
-        String description,
-        Double price
-    ) {}
-}
-```
-
-### 3. 智能推荐系统
-
-```java
-@Service
-public class RecommendationService {
-    
-    private final VectorStore vectorStore;
-    
-    /**
-     * 基于内容的推荐
-     */
-    public List<Article> recommendSimilarArticles(
-            String articleId,
-            int count) {
-        
-        // 1. 获取当前文章
-        List<Document> current = vectorStore.similaritySearch(
-            SearchRequest.builder()
-                .filterExpression("articleId == '" + articleId + "'")
-                .topK(1)
-                .build()
-        );
-        
-        if (current.isEmpty()) {
-            return List.of();
-        }
-        
-        // 2. 查找相似文章
-        Document currentDoc = current.get(0);
-        List<Document> similar = vectorStore.similaritySearch(
-            SearchRequest.builder()
-                .query(currentDoc.getText())
-                .topK(count + 1)  // +1因为会包含自己
-                .similarityThreshold(0.5)
-                .filterExpression("articleId != '" + articleId + "'")
-                .build()
-        );
-        
-        // 3. 转换结果
-        return similar.stream()
-            .map(doc -> new Article(
-                (String) doc.getMetadata().get("articleId"),
-                (String) doc.getMetadata().get("title"),
-                doc.getText()
-            ))
-            .toList();
-    }
-    
-    /**
-     * 基于用户兴趣的推荐
-     */
-    public List<Article> recommendForUser(
-            String userId,
-            List<String> userInterests) {
-        
-        // 构建用户兴趣查询
-        String query = String.join(" ", userInterests);
-        
-        // 搜索相关文章
-        List<Document> docs = vectorStore.similaritySearch(
-            SearchRequest.builder()
-                .query(query)
-                .topK(10)
-                .similarityThreshold(0.6)
-                .build()
-        );
-        
-        return docs.stream()
-            .map(doc -> new Article(
-                (String) doc.getMetadata().get("articleId"),
-                (String) doc.getMetadata().get("title"),
-                doc.getText()
-            ))
-            .toList();
-    }
-    
-    record Article(String id, String title, String content) {}
 }
 ```
 
@@ -2189,48 +1773,47 @@ public class RecommendationService {
 
 ## 总结
 
-### 核心要点
+### VectorStore核心特点
 
-1. **向量数据库**基于相似性搜索，而非精确匹配
-2. **VectorStore接口**统一了不同向量数据库的操作
-3. **Document**是基本存储单元，包含文本、元数据和向量
-4. **Embedding**将文本转换为向量表示
-5. **SearchRequest**配置搜索参数（topK、相似度阈值、过滤器）
-6. **Filter表达式**支持跨数据库的元数据过滤
+1. **语义存储**: 基于向量的文档存储
+2. **相似度检索**: 快速找到相关文档
+3. **元数据过滤**: 灵活的过滤表达式
+4. **多数据库支持**: 20+种向量数据库
+5. **统一API**: 跨数据库通用接口
 
-### 选择向量数据库
+### Spring AI VectorStore API
 
-| 需求 | 推荐 |
-|------|------|
-| 生产环境、稳定性 | **PgVector** |
-| 开发测试、快速上手 | **Chroma**, **SimpleVectorStore** |
-| 高性能、大规模 | **Pinecone**, **Milvus** |
-| 实时应用 | **Redis** |
-| 文档数据库用户 | **MongoDB Atlas** |
+```
+VectorStore (接口)
+    ↓
+add(List<Document>)  // 添加文档
+    ↓
+similaritySearch(SearchRequest)  // 相似度搜索
+    ↓
+delete(List<String>)  // 删除文档
+```
+
+### 核心配置
+
+- **topK**: 返回结果数量
+- **similarityThreshold**: 相似度阈值
+- **filterExpression**: 元数据过滤
+- **indexType**: 索引类型（HNSW、IVF等）
 
 ### 最佳实践清单
 
-- ✅ 合理设计文档分块策略
-- ✅ 添加丰富的元数据便于过滤
-- ✅ 选择合适的相似度阈值
-- ✅ 使用批处理提升性能
-- ✅ 实现错误处理和重试
-- ✅ 添加监控和日志
-- ✅ 考虑多租户隔离
-- ✅ 定期维护和清理数据
+- ✅ 根据场景选择合适的向量数据库
+- ✅ 使用元数据过滤提高检索精度
+- ✅ 批量处理大规模数据导入
+- ✅ 实现错误处理和重试机制
+- ✅ 监控性能和成本
+- ✅ 定期清理无用数据
+- ✅ 使用适当的相似度阈值
 
-### 下一步
-
-- 学习**RAG（检索增强生成）**模式
-- 探索**混合搜索**技术
-- 了解**向量索引**优化
-- 实践**多模态**向量搜索
-
-通过掌握VectorStore，你可以构建强大的语义搜索、智能推荐、文档问答等AI应用！
+通过Spring AI的VectorStore功能，你可以轻松构建强大的语义搜索、RAG应用、智能推荐等系统！
 
 ---
 
 **文档版本**: 1.0  
-**最后更新**: 2025-10-02  
+**最后更新**: 2025-10-05  
 **Spring AI版本**: 1.1.0-SNAPSHOT
-

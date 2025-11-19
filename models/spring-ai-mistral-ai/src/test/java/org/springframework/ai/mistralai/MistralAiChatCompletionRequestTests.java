@@ -61,7 +61,7 @@ class MistralAiChatCompletionRequestTests {
 	private static final Media IMAGE_MEDIA = new Media(Media.Format.IMAGE_PNG, URI.create(IMAGE_URL));
 
 	private final MistralAiChatModel chatModel = MistralAiChatModel.builder()
-		.mistralAiApi(new MistralAiApi(BASE_URL, API_KEY))
+		.mistralAiApi(MistralAiApi.builder().baseUrl(BASE_URL).apiKey(API_KEY).build())
 		.build();
 
 	@Test
@@ -100,7 +100,7 @@ class MistralAiChatCompletionRequestTests {
 			.build();
 
 		MistralAiChatModel anotherChatModel = MistralAiChatModel.builder()
-			.mistralAiApi(new MistralAiApi(BASE_URL, API_KEY))
+			.mistralAiApi(MistralAiApi.builder().baseUrl(BASE_URL).apiKey(API_KEY).build())
 			.defaultOptions(defaultOptions)
 			.build();
 
@@ -199,7 +199,9 @@ class MistralAiChatCompletionRequestTests {
 		var toolResponse1 = createToolResponse(1);
 		var toolResponse2 = createToolResponse(2);
 		var toolResponse3 = createToolResponse(3);
-		var toolResponseMessage = new ToolResponseMessage(List.of(toolResponse1, toolResponse2, toolResponse3));
+		var toolResponseMessage = ToolResponseMessage.builder()
+			.responses(List.of(toolResponse1, toolResponse2, toolResponse3))
+			.build();
 		var prompt = createPrompt(toolResponseMessage);
 		var chatCompletionRequest = this.chatModel.createRequest(prompt, false);
 		var chatCompletionMessages = chatCompletionRequest.messages();
@@ -212,7 +214,7 @@ class MistralAiChatCompletionRequestTests {
 	@Test
 	void createChatCompletionMessagesWithInvalidToolResponseMessage() {
 		var toolResponse = new ToolResponseMessage.ToolResponse(null, null, null);
-		var toolResponseMessage = new ToolResponseMessage(List.of(toolResponse));
+		var toolResponseMessage = ToolResponseMessage.builder().responses(List.of(toolResponse)).build();
 		var prompt = createPrompt(toolResponseMessage);
 		assertThatThrownBy(() -> this.chatModel.createRequest(prompt, false))
 			.isInstanceOf(IllegalArgumentException.class)

@@ -22,11 +22,16 @@ import java.util.Set;
 import org.springaicommunity.mcp.annotation.McpElicitation;
 import org.springaicommunity.mcp.annotation.McpLogging;
 import org.springaicommunity.mcp.annotation.McpProgress;
+import org.springaicommunity.mcp.annotation.McpPromptListChanged;
+import org.springaicommunity.mcp.annotation.McpResourceListChanged;
 import org.springaicommunity.mcp.annotation.McpSampling;
+import org.springaicommunity.mcp.annotation.McpToolListChanged;
 
+import org.springframework.ai.mcp.annotation.spring.ClientMcpAsyncHandlersRegistry;
+import org.springframework.ai.mcp.annotation.spring.ClientMcpSyncHandlersRegistry;
 import org.springframework.ai.mcp.annotation.spring.scan.AbstractAnnotatedMethodBeanFactoryInitializationAotProcessor;
-import org.springframework.ai.mcp.annotation.spring.scan.AbstractAnnotatedMethodBeanPostProcessor;
 import org.springframework.ai.mcp.annotation.spring.scan.AbstractMcpAnnotatedBeans;
+import org.springframework.ai.mcp.client.common.autoconfigure.properties.McpClientCommonProperties;
 import org.springframework.aot.hint.MemberCategory;
 import org.springframework.aot.hint.RuntimeHints;
 import org.springframework.aot.hint.RuntimeHintsRegistrar;
@@ -41,6 +46,7 @@ import org.springframework.context.annotation.ImportRuntimeHints;
 /**
  * @author Christian Tzolov
  * @author Josh Long
+ * @author Fu Jian
  */
 @AutoConfiguration
 @ConditionalOnClass(McpLogging.class)
@@ -51,19 +57,22 @@ import org.springframework.context.annotation.ImportRuntimeHints;
 public class McpClientAnnotationScannerAutoConfiguration {
 
 	private static final Set<Class<? extends Annotation>> CLIENT_MCP_ANNOTATIONS = Set.of(McpLogging.class,
-			McpSampling.class, McpElicitation.class, McpProgress.class);
+			McpSampling.class, McpElicitation.class, McpProgress.class, McpToolListChanged.class,
+			McpResourceListChanged.class, McpPromptListChanged.class);
 
 	@Bean
 	@ConditionalOnMissingBean
-	public ClientMcpAnnotatedBeans clientAnnotatedBeans() {
-		return new ClientMcpAnnotatedBeans();
+	@ConditionalOnProperty(prefix = McpClientCommonProperties.CONFIG_PREFIX, name = "type", havingValue = "SYNC",
+			matchIfMissing = true)
+	public ClientMcpSyncHandlersRegistry clientMcpSyncHandlersRegistry() {
+		return new ClientMcpSyncHandlersRegistry();
 	}
 
 	@Bean
 	@ConditionalOnMissingBean
-	public static ClientAnnotatedMethodBeanPostProcessor clientAnnotatedMethodBeanPostProcessor(
-			ClientMcpAnnotatedBeans clientMcpAnnotatedBeans, McpClientAnnotationScannerProperties properties) {
-		return new ClientAnnotatedMethodBeanPostProcessor(clientMcpAnnotatedBeans, CLIENT_MCP_ANNOTATIONS);
+	@ConditionalOnProperty(prefix = McpClientCommonProperties.CONFIG_PREFIX, name = "type", havingValue = "ASYNC")
+	public ClientMcpAsyncHandlersRegistry clientMcpAsyncHandlersRegistry() {
+		return new ClientMcpAsyncHandlersRegistry();
 	}
 
 	@Bean
@@ -81,15 +90,6 @@ public class McpClientAnnotationScannerAutoConfiguration {
 		public ClientAnnotatedBeanFactoryInitializationAotProcessor(
 				Set<Class<? extends Annotation>> targetAnnotations) {
 			super(targetAnnotations);
-		}
-
-	}
-
-	public static class ClientAnnotatedMethodBeanPostProcessor extends AbstractAnnotatedMethodBeanPostProcessor {
-
-		public ClientAnnotatedMethodBeanPostProcessor(ClientMcpAnnotatedBeans clientMcpAnnotatedBeans,
-				Set<Class<? extends Annotation>> targetAnnotations) {
-			super(clientMcpAnnotatedBeans, targetAnnotations);
 		}
 
 	}

@@ -184,23 +184,6 @@ public class OllamaEmbeddingOptions implements EmbeddingOptions {
 				.build();
 	}
 
-	public static OllamaEmbeddingOptions fromOptions(OllamaOptions fromOptions) {
-		return builder()
-				.model(fromOptions.getModel())
-				.keepAlive(fromOptions.getKeepAlive())
-				.truncate(fromOptions.getTruncate())
-				.useNUMA(fromOptions.getUseNUMA())
-				.numBatch(fromOptions.getNumBatch())
-				.numGPU(fromOptions.getNumGPU())
-				.mainGPU(fromOptions.getMainGPU())
-				.lowVRAM(fromOptions.getLowVRAM())
-				.vocabOnly(fromOptions.getVocabOnly())
-				.useMMap(fromOptions.getUseMMap())
-				.useMLock(fromOptions.getUseMLock())
-				.numThread(fromOptions.getNumThread())
-				.build();
-	}
-
 	// -------------------
 	// Getters and Setters
 	// -------------------
@@ -338,7 +321,7 @@ public class OllamaEmbeddingOptions implements EmbeddingOptions {
 		return Objects.hash(this.model, this.keepAlive, this.truncate);
 	}
 
-	public static class Builder {
+	public static final class Builder {
 
 		private final OllamaEmbeddingOptions options = new OllamaEmbeddingOptions();
 

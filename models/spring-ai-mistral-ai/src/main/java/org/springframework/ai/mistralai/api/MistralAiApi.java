@@ -62,6 +62,7 @@ import org.springframework.web.reactive.function.client.WebClient;
  * @author Christian Tzolov
  * @author Thomas Vitale
  * @author Jason Smith
+ * @author Nicolas Krier
  * @since 1.0.0
  */
 public class MistralAiApi {
@@ -81,38 +82,6 @@ public class MistralAiApi {
 	private final WebClient webClient;
 
 	private final MistralAiStreamFunctionCallingHelper chunkMerger = new MistralAiStreamFunctionCallingHelper();
-
-	/**
-	 * Create a new client api with DEFAULT_BASE_URL
-	 * @param apiKey Mistral api Key.
-	 */
-	@Deprecated
-	public MistralAiApi(String apiKey) {
-		this(DEFAULT_BASE_URL, apiKey);
-	}
-
-	/**
-	 * Create a new client api.
-	 * @param baseUrl api base URL.
-	 * @param apiKey Mistral api Key.
-	 */
-	@Deprecated
-	public MistralAiApi(String baseUrl, String apiKey) {
-		this(baseUrl, apiKey, RestClient.builder(), RetryUtils.DEFAULT_RESPONSE_ERROR_HANDLER);
-	}
-
-	/**
-	 * Create a new client api.
-	 * @param baseUrl api base URL.
-	 * @param apiKey Mistral api Key.
-	 * @param restClientBuilder RestClient builder.
-	 * @param responseErrorHandler Response error handler.
-	 */
-	@Deprecated
-	public MistralAiApi(String baseUrl, String apiKey, RestClient.Builder restClientBuilder,
-			ResponseErrorHandler responseErrorHandler) {
-		this(baseUrl, apiKey, restClientBuilder, WebClient.builder(), responseErrorHandler);
-	}
 
 	/**
 	 * Create a new client api.
@@ -330,7 +299,20 @@ public class MistralAiApi {
 	public enum EmbeddingModel {
 
 		// @formatter:off
-		EMBED("mistral-embed");
+		/**
+		 * Mistral Embed model for general text embeddings.
+		 * Produces 1024-dimensional embeddings suitable for semantic search,
+		 * clustering, and other text similarity tasks.
+		 */
+		EMBED("mistral-embed"),
+
+		/**
+		 * Codestral Embed model optimized for code embeddings.
+		 * Produces 1536-dimensional embeddings specifically designed for
+		 * code similarity, code search, and retrieval-augmented generation (RAG)
+		 * with code repositories.
+		 */
+		CODESTRAL_EMBED("codestral-embed");
 		 // @formatter:on
 
 		private final String value;

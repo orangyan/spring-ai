@@ -69,8 +69,8 @@ import org.springframework.ai.model.tool.internal.ToolCallReactiveContextHolder;
 import org.springframework.ai.retry.RetryUtils;
 import org.springframework.ai.support.UsageCalculator;
 import org.springframework.ai.tool.definition.ToolDefinition;
+import org.springframework.core.retry.RetryTemplate;
 import org.springframework.http.ResponseEntity;
-import org.springframework.retry.support.RetryTemplate;
 import org.springframework.util.Assert;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.MimeType;
@@ -126,14 +126,6 @@ public class MistralAiChatModel implements ChatModel {
 	 * Conventions to use for generating observations.
 	 */
 	private ChatModelObservationConvention observationConvention = DEFAULT_OBSERVATION_CONVENTION;
-
-	@Deprecated
-	public MistralAiChatModel(MistralAiApi mistralAiApi, MistralAiChatOptions defaultOptions,
-			ToolCallingManager toolCallingManager, RetryTemplate retryTemplate,
-			ObservationRegistry observationRegistry) {
-		this(mistralAiApi, defaultOptions, toolCallingManager, retryTemplate, observationRegistry,
-				new DefaultToolExecutionEligibilityPredicate());
-	}
 
 	public MistralAiChatModel(MistralAiApi mistralAiApi, MistralAiChatOptions defaultOptions,
 			ToolCallingManager toolCallingManager, RetryTemplate retryTemplate, ObservationRegistry observationRegistry,
@@ -199,8 +191,8 @@ public class MistralAiChatModel implements ChatModel {
 					this.observationRegistry)
 			.observe(() -> {
 
-				ResponseEntity<ChatCompletion> completionEntity = this.retryTemplate
-					.execute(ctx -> this.mistralAiApi.chatCompletionEntity(request));
+				ResponseEntity<ChatCompletion> completionEntity = RetryUtils.execute(this.retryTemplate,
+						() -> this.mistralAiApi.chatCompletionEntity(request));
 
 				ChatCompletion chatCompletion = completionEntity.getBody();
 
@@ -272,8 +264,8 @@ public class MistralAiChatModel implements ChatModel {
 
 			observation.parentObservation(contextView.getOrDefault(ObservationThreadLocalAccessor.KEY, null)).start();
 
-			Flux<ChatCompletionChunk> completionChunks = this.retryTemplate
-				.execute(ctx -> this.mistralAiApi.chatCompletionStream(request));
+			Flux<ChatCompletionChunk> completionChunks = RetryUtils.execute(this.retryTemplate,
+					() -> this.mistralAiApi.chatCompletionStream(request));
 
 			// For chunked responses, only the first chunk contains the choice role.
 			// The rest of the chunks with same ID share the same role.
@@ -457,18 +449,13 @@ public class MistralAiChatModel implements ChatModel {
 	}
 
 	private Stream<ChatCompletionMessage> createChatCompletionMessages(Message message) {
-		switch (message.getMessageType()) {
-			case USER:
-				return Stream.of(createUserChatCompletionMessage(message));
-			case SYSTEM:
-				return Stream.of(createSystemChatCompletionMessage(message));
-			case ASSISTANT:
-				return Stream.of(createAssistantChatCompletionMessage(message));
-			case TOOL:
-				return createToolChatCompletionMessages(message);
-			default:
-				throw new IllegalStateException("Unknown message type: " + message.getMessageType());
-		}
+		return switch (message.getMessageType()) {
+			case USER -> Stream.of(createUserChatCompletionMessage(message));
+			case SYSTEM -> Stream.of(createSystemChatCompletionMessage(message));
+			case ASSISTANT -> Stream.of(createAssistantChatCompletionMessage(message));
+			case TOOL -> createToolChatCompletionMessages(message);
+			default -> throw new IllegalStateException("Unknown message type: " + message.getMessageType());
+		};
 	}
 
 	private Stream<ChatCompletionMessage> createToolChatCompletionMessages(Message message) {

@@ -16,12 +16,9 @@
 
 package org.springframework.ai.ollama;
 
-import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import io.micrometer.observation.ObservationRegistry;
 
@@ -43,7 +40,6 @@ import org.springframework.ai.ollama.api.OllamaApi;
 import org.springframework.ai.ollama.api.OllamaApi.EmbeddingsResponse;
 import org.springframework.ai.ollama.api.OllamaEmbeddingOptions;
 import org.springframework.ai.ollama.api.OllamaModel;
-import org.springframework.ai.ollama.api.OllamaOptions;
 import org.springframework.ai.ollama.api.common.OllamaApiConstants;
 import org.springframework.ai.ollama.management.ModelManagementOptions;
 import org.springframework.ai.ollama.management.OllamaModelManager;
@@ -174,12 +170,12 @@ public class OllamaEmbeddingModel extends AbstractEmbeddingModel {
 			requestOptions = (OllamaEmbeddingOptions) embeddingRequest.getOptions();
 		}
 		else {
-			requestOptions = OllamaEmbeddingOptions.fromOptions((OllamaOptions) embeddingRequest.getOptions());
+			requestOptions = OllamaEmbeddingOptions.fromOptions((OllamaEmbeddingOptions) embeddingRequest.getOptions());
 		}
 
 		return new OllamaApi.EmbeddingsRequest(requestOptions.getModel(), embeddingRequest.getInstructions(),
-				DurationParser.parse(requestOptions.getKeepAlive()),
-				OllamaEmbeddingOptions.filterNonSupportedFields(requestOptions.toMap()), requestOptions.getTruncate());
+				requestOptions.getKeepAlive(), OllamaEmbeddingOptions.filterNonSupportedFields(requestOptions.toMap()),
+				requestOptions.getTruncate());
 	}
 
 	/**
@@ -200,37 +196,6 @@ public class OllamaEmbeddingModel extends AbstractEmbeddingModel {
 		this.observationConvention = observationConvention;
 	}
 
-	public static class DurationParser {
-
-		private static final Pattern PATTERN = Pattern.compile("(-?\\d+)(ms|s|m|h)");
-
-		public static Duration parse(String input) {
-
-			if (!StringUtils.hasText(input)) {
-				return null;
-			}
-
-			Matcher matcher = PATTERN.matcher(input);
-
-			if (matcher.matches()) {
-				long value = Long.parseLong(matcher.group(1));
-				String unit = matcher.group(2);
-
-				return switch (unit) {
-					case "ms" -> Duration.ofMillis(value);
-					case "s" -> Duration.ofSeconds(value);
-					case "m" -> Duration.ofMinutes(value);
-					case "h" -> Duration.ofHours(value);
-					default -> throw new IllegalArgumentException("Unsupported time unit: " + unit);
-				};
-			}
-			else {
-				throw new IllegalArgumentException("Invalid duration format: " + input);
-			}
-		}
-
-	}
-
 	public static final class Builder {
 
 		private OllamaApi ollamaApi;
@@ -248,12 +213,6 @@ public class OllamaEmbeddingModel extends AbstractEmbeddingModel {
 
 		public Builder ollamaApi(OllamaApi ollamaApi) {
 			this.ollamaApi = ollamaApi;
-			return this;
-		}
-
-		@Deprecated
-		public Builder defaultOptions(OllamaOptions defaultOptions) {
-			this.defaultOptions = OllamaEmbeddingOptions.fromOptions(defaultOptions);
 			return this;
 		}
 

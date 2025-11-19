@@ -87,8 +87,8 @@ import org.springframework.ai.retry.RetryUtils;
 import org.springframework.ai.support.UsageCalculator;
 import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.beans.factory.DisposableBean;
+import org.springframework.core.retry.RetryTemplate;
 import org.springframework.lang.NonNull;
-import org.springframework.retry.support.RetryTemplate;
 import org.springframework.util.Assert;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
@@ -250,16 +250,11 @@ public class GoogleGenAiChatModel implements ChatModel, DisposableBean {
 
 		Assert.notNull(type, "Message type must not be null");
 
-		switch (type) {
-			case SYSTEM:
-			case USER:
-			case TOOL:
-				return GeminiMessageType.USER;
-			case ASSISTANT:
-				return GeminiMessageType.MODEL;
-			default:
-				throw new IllegalArgumentException("Unsupported message type: " + type);
-		}
+		return switch (type) {
+			case SYSTEM, USER, TOOL -> GeminiMessageType.USER;
+			case ASSISTANT -> GeminiMessageType.MODEL;
+			default -> throw new IllegalArgumentException("Unsupported message type: " + type);
+		};
 	}
 
 	static List<Part> messageToGeminiParts(Message message) {
@@ -409,30 +404,33 @@ public class GoogleGenAiChatModel implements ChatModel, DisposableBean {
 		ChatResponse response = ChatModelObservationDocumentation.CHAT_MODEL_OPERATION
 			.observation(this.observationConvention, DEFAULT_OBSERVATION_CONVENTION, () -> observationContext,
 					this.observationRegistry)
-			.observe(() -> this.retryTemplate.execute(context -> {
+			.observe(() -> {
 
-				var geminiRequest = createGeminiRequest(prompt);
+				return RetryUtils.execute(this.retryTemplate, () -> {
 
-				GenerateContentResponse generateContentResponse = this.getContentResponse(geminiRequest);
+					var geminiRequest = createGeminiRequest(prompt);
 
-				List<Generation> generations = generateContentResponse.candidates()
-					.orElse(List.of())
-					.stream()
-					.map(this::responseCandidateToGeneration)
-					.flatMap(List::stream)
-					.toList();
+					GenerateContentResponse generateContentResponse = this.getContentResponse(geminiRequest);
 
-				var usage = generateContentResponse.usageMetadata();
-				GoogleGenAiChatOptions options = (GoogleGenAiChatOptions) prompt.getOptions();
-				Usage currentUsage = (usage.isPresent()) ? getDefaultUsage(usage.get(), options)
-						: getDefaultUsage(null, options);
-				Usage cumulativeUsage = UsageCalculator.getCumulativeUsage(currentUsage, previousChatResponse);
-				ChatResponse chatResponse = new ChatResponse(generations,
-						toChatResponseMetadata(cumulativeUsage, generateContentResponse.modelVersion().get()));
+					List<Generation> generations = generateContentResponse.candidates()
+						.orElse(List.of())
+						.stream()
+						.map(this::responseCandidateToGeneration)
+						.flatMap(List::stream)
+						.toList();
 
-				observationContext.setResponse(chatResponse);
-				return chatResponse;
-			}));
+					var usage = generateContentResponse.usageMetadata();
+					GoogleGenAiChatOptions options = (GoogleGenAiChatOptions) prompt.getOptions();
+					Usage currentUsage = (usage.isPresent()) ? getDefaultUsage(usage.get(), options)
+							: getDefaultUsage(null, options);
+					Usage cumulativeUsage = UsageCalculator.getCumulativeUsage(currentUsage, previousChatResponse);
+					ChatResponse chatResponse = new ChatResponse(generations,
+							toChatResponseMetadata(cumulativeUsage, generateContentResponse.modelVersion().get()));
+
+					observationContext.setResponse(chatResponse);
+					return chatResponse;
+				});
+			});
 
 		if (this.toolExecutionEligibilityPredicate.isToolExecutionRequired(prompt.getOptions(), response)) {
 			var toolExecutionResult = this.toolCallingManager.executeToolCalls(prompt, response);
@@ -780,51 +778,38 @@ public class GoogleGenAiChatModel implements ChatModel, DisposableBean {
 	// Helper methods for mapping safety settings enums
 	private static com.google.genai.types.HarmCategory mapToGenAiHarmCategory(
 			GoogleGenAiSafetySetting.HarmCategory category) {
-		switch (category) {
-			case HARM_CATEGORY_UNSPECIFIED:
-				return new com.google.genai.types.HarmCategory(
-						com.google.genai.types.HarmCategory.Known.HARM_CATEGORY_UNSPECIFIED);
-			case HARM_CATEGORY_HATE_SPEECH:
-				return new com.google.genai.types.HarmCategory(
-						com.google.genai.types.HarmCategory.Known.HARM_CATEGORY_HATE_SPEECH);
-			case HARM_CATEGORY_DANGEROUS_CONTENT:
-				return new com.google.genai.types.HarmCategory(
-						com.google.genai.types.HarmCategory.Known.HARM_CATEGORY_DANGEROUS_CONTENT);
-			case HARM_CATEGORY_HARASSMENT:
-				return new com.google.genai.types.HarmCategory(
-						com.google.genai.types.HarmCategory.Known.HARM_CATEGORY_HARASSMENT);
-			case HARM_CATEGORY_SEXUALLY_EXPLICIT:
-				return new com.google.genai.types.HarmCategory(
-						com.google.genai.types.HarmCategory.Known.HARM_CATEGORY_SEXUALLY_EXPLICIT);
-			default:
-				throw new IllegalArgumentException("Unknown HarmCategory: " + category);
-		}
+		return switch (category) {
+			case HARM_CATEGORY_UNSPECIFIED -> new com.google.genai.types.HarmCategory(
+					com.google.genai.types.HarmCategory.Known.HARM_CATEGORY_UNSPECIFIED);
+			case HARM_CATEGORY_HATE_SPEECH -> new com.google.genai.types.HarmCategory(
+					com.google.genai.types.HarmCategory.Known.HARM_CATEGORY_HATE_SPEECH);
+			case HARM_CATEGORY_DANGEROUS_CONTENT -> new com.google.genai.types.HarmCategory(
+					com.google.genai.types.HarmCategory.Known.HARM_CATEGORY_DANGEROUS_CONTENT);
+			case HARM_CATEGORY_HARASSMENT -> new com.google.genai.types.HarmCategory(
+					com.google.genai.types.HarmCategory.Known.HARM_CATEGORY_HARASSMENT);
+			case HARM_CATEGORY_SEXUALLY_EXPLICIT -> new com.google.genai.types.HarmCategory(
+					com.google.genai.types.HarmCategory.Known.HARM_CATEGORY_SEXUALLY_EXPLICIT);
+			default -> throw new IllegalArgumentException("Unknown HarmCategory: " + category);
+		};
 	}
 
 	private static com.google.genai.types.HarmBlockThreshold mapToGenAiHarmBlockThreshold(
 			GoogleGenAiSafetySetting.HarmBlockThreshold threshold) {
-		switch (threshold) {
-			case HARM_BLOCK_THRESHOLD_UNSPECIFIED:
-				return new com.google.genai.types.HarmBlockThreshold(
-						com.google.genai.types.HarmBlockThreshold.Known.HARM_BLOCK_THRESHOLD_UNSPECIFIED);
-			case BLOCK_LOW_AND_ABOVE:
-				return new com.google.genai.types.HarmBlockThreshold(
-						com.google.genai.types.HarmBlockThreshold.Known.BLOCK_LOW_AND_ABOVE);
-			case BLOCK_MEDIUM_AND_ABOVE:
-				return new com.google.genai.types.HarmBlockThreshold(
-						com.google.genai.types.HarmBlockThreshold.Known.BLOCK_MEDIUM_AND_ABOVE);
-			case BLOCK_ONLY_HIGH:
-				return new com.google.genai.types.HarmBlockThreshold(
-						com.google.genai.types.HarmBlockThreshold.Known.BLOCK_ONLY_HIGH);
-			case BLOCK_NONE:
-				return new com.google.genai.types.HarmBlockThreshold(
-						com.google.genai.types.HarmBlockThreshold.Known.BLOCK_NONE);
-			case OFF:
-				return new com.google.genai.types.HarmBlockThreshold(
-						com.google.genai.types.HarmBlockThreshold.Known.OFF);
-			default:
-				throw new IllegalArgumentException("Unknown HarmBlockThreshold: " + threshold);
-		}
+		return switch (threshold) {
+			case HARM_BLOCK_THRESHOLD_UNSPECIFIED -> new com.google.genai.types.HarmBlockThreshold(
+					com.google.genai.types.HarmBlockThreshold.Known.HARM_BLOCK_THRESHOLD_UNSPECIFIED);
+			case BLOCK_LOW_AND_ABOVE -> new com.google.genai.types.HarmBlockThreshold(
+					com.google.genai.types.HarmBlockThreshold.Known.BLOCK_LOW_AND_ABOVE);
+			case BLOCK_MEDIUM_AND_ABOVE -> new com.google.genai.types.HarmBlockThreshold(
+					com.google.genai.types.HarmBlockThreshold.Known.BLOCK_MEDIUM_AND_ABOVE);
+			case BLOCK_ONLY_HIGH -> new com.google.genai.types.HarmBlockThreshold(
+					com.google.genai.types.HarmBlockThreshold.Known.BLOCK_ONLY_HIGH);
+			case BLOCK_NONE -> new com.google.genai.types.HarmBlockThreshold(
+					com.google.genai.types.HarmBlockThreshold.Known.BLOCK_NONE);
+			case OFF ->
+				new com.google.genai.types.HarmBlockThreshold(com.google.genai.types.HarmBlockThreshold.Known.OFF);
+			default -> throw new IllegalArgumentException("Unknown HarmBlockThreshold: " + threshold);
+		};
 	}
 
 	private List<Content> toGeminiContent(List<Message> instructions) {

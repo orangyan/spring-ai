@@ -51,7 +51,7 @@ import org.springframework.util.Assert;
  * An implementation of {@link ChatMemoryRepository} for Azure Cosmos DB.
  *
  * @author Theo van Kraay
- * @since 1.0.0
+ * @since 1.1.0
  */
 public final class CosmosDBChatMemoryRepository implements ChatMemoryRepository {
 
@@ -232,10 +232,10 @@ public final class CosmosDBChatMemoryRepository implements ChatMemoryRepository 
 		}
 
 		return switch (messageType) {
-			case ASSISTANT -> new AssistantMessage(content, metadata);
+			case ASSISTANT -> AssistantMessage.builder().content(content).properties(metadata).build();
 			case USER -> UserMessage.builder().text(content).metadata(metadata).build();
 			case SYSTEM -> SystemMessage.builder().text(content).metadata(metadata).build();
-			case TOOL -> new ToolResponseMessage(List.of(), metadata);
+			case TOOL -> ToolResponseMessage.builder().responses(List.of()).metadata(metadata).build();
 			default -> throw new IllegalStateException(String.format("Unknown message type: %s", messageTypeStr));
 		};
 	}

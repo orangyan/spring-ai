@@ -25,13 +25,13 @@ import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
+import org.springframework.ai.chat.messages.ToolResponseMessage.ToolResponse;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.ollama.api.OllamaApi;
 import org.springframework.ai.ollama.api.OllamaChatOptions;
-import org.springframework.ai.ollama.api.OllamaOptions;
 import org.springframework.ai.retry.RetryUtils;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.DefaultToolDefinition;
@@ -105,7 +105,7 @@ class OllamaChatRequestTests {
 	@Test
 	void createRequestWithPromptOllamaOptions() {
 		// Runtime options should override the default options.
-		OllamaOptions promptOptions = OllamaOptions.builder().temperature(0.8).topP(0.5).numGPU(2).build();
+		OllamaChatOptions promptOptions = OllamaChatOptions.builder().temperature(0.8).topP(0.5).numGPU(2).build();
 		var prompt = this.chatModel.buildRequestPrompt(new Prompt("Test message content", promptOptions));
 
 		var request = this.chatModel.ollamaChatRequest(prompt, true);
@@ -188,7 +188,7 @@ class OllamaChatRequestTests {
 		assertThat(request.model()).isEqualTo("DEFAULT_OPTIONS_MODEL");
 
 		// Prompt options should override the default options.
-		OllamaOptions promptOptions = OllamaOptions.builder().model("PROMPT_MODEL").build();
+		OllamaChatOptions promptOptions = OllamaChatOptions.builder().model("PROMPT_MODEL").build();
 		var prompt2 = chatModel.buildRequestPrompt(new Prompt("Test message content", promptOptions));
 
 		request = chatModel.ollamaChatRequest(prompt2, true);
@@ -256,11 +256,10 @@ class OllamaChatRequestTests {
 		var systemMessage = new SystemMessage("Test system message");
 		var userMessage = new UserMessage("Test user message");
 		// @formatter:off
-		var toolResponseMessage = new ToolResponseMessage(List.of(
-				new ToolResponseMessage.ToolResponse("tool1", "Tool 1", "Test tool response 1"),
-				new ToolResponseMessage.ToolResponse("tool2", "Tool 2", "Test tool response 2"),
-				new ToolResponseMessage.ToolResponse("tool3", "Tool 3", "Test tool response 3"))
-		);
+		var toolResponseMessage = ToolResponseMessage.builder().responses(List.of(
+				new ToolResponse("tool1", "Tool 1", "Test tool response 1"),
+				new ToolResponse("tool2", "Tool 2", "Test tool response 2"),
+				new ToolResponse("tool3", "Tool 3", "Test tool response 3"))).build();
 		// @formatter:on
 		var assistantMessage = new AssistantMessage("Test assistant message");
 
